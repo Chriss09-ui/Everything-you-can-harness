@@ -29,7 +29,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_and_validate_artifact
 
 
 def framework_adjust_node(state: HarnessBuilderState) -> dict:
@@ -60,7 +60,7 @@ def framework_adjust_node(state: HarnessBuilderState) -> dict:
     )
 
     raw = client.generate(system, user)
-    result = _parse_json(raw, "framework_adjustment")
+    result = parse_and_validate_artifact(raw, "framework_adjustment")
 
     # 支持两种格式：新版带 feedback_responses，或者旧版直接是调整后的 framework
     adjusted = result.get("adjusted_framework", result)

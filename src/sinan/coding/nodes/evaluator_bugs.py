@@ -25,6 +25,7 @@ from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase,
 )
+from sinan.validation import validate_artifact
 
 
 def evaluator_bugs_node(state: CodingState) -> dict:
@@ -45,6 +46,7 @@ def evaluator_bugs_node(state: CodingState) -> dict:
         "minor_count": len([b for b in bugs if b.get("severity") == "minor"]),
     }
 
+    validate_artifact(bug_report, "bug_report")
     write_json(state["run_id"], "bug_report.json", bug_report, versioned=True)
     state["bug_report"] = bug_report
     state["fix_loop_count"] = state.get("fix_loop_count", 0) + 1

@@ -27,7 +27,7 @@ import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
 from sinan.llm import get_llm_client
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, get_run_dir,
@@ -65,7 +65,7 @@ def implement_feature_node(state: CodingState) -> dict:
     )
 
     raw = client.generate(system, user)
-    result = _parse_json(raw, "implement_feature")
+    result = parse_and_validate_artifact(raw, "implement_result")
 
     for f in result.get("files", []):
         target = harness_dir / f["path"]

@@ -26,6 +26,7 @@ from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase,
 )
+from sinan.validation import validate_artifact
 
 
 def sprint_complete_node(state: CodingState) -> dict:
@@ -56,6 +57,7 @@ def sprint_complete_node(state: CodingState) -> dict:
         "overall_pass": grade.get("overall_pass", True),
     }
 
+    validate_artifact(sprint_result, "sprint_result")
     write_json(state["run_id"], "sprint_result.json", sprint_result, versioned=True)
     state["sprint_result"] = sprint_result
     state["current_phase"] = "SPRINT_COMPLETE"

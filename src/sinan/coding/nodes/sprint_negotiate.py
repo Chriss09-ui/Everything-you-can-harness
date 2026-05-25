@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -43,7 +43,7 @@ def sprint_negotiate_node(state: CodingState) -> dict:
 
     user = f"请审核以下 Sprint 目标提案：\n\n{json.dumps(contract, indent=2, ensure_ascii=False)}"
     raw = client.generate(system, user)
-    review = _parse_json(raw, "sprint_negotiate")
+    review = parse_and_validate_artifact(raw, "sprint_negotiation")
 
     agreed = review.get("agreed", False)
     contract["agreed"] = agreed

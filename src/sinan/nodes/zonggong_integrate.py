@@ -29,7 +29,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_and_validate_artifact
 
 
 def zonggong_integrate_node(state: HarnessBuilderState) -> dict:
@@ -76,7 +76,7 @@ Eval Placements:
 """
 
     raw = client.generate(system, user)
-    arch = _parse_json(raw, "architecture_pack")
+    arch = parse_and_validate_artifact(raw, "architecture_pack")
 
     # 加入完整上下文便于追溯
     arch["subagent_outputs"] = subagent_outputs

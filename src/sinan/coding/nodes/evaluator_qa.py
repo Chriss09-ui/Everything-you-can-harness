@@ -24,7 +24,7 @@ from ..state import CodingState
 from ..prompts import get_coding_prompt
 from ..testing import run_qa_eval
 from sinan.llm import get_llm_client
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase,
@@ -55,7 +55,7 @@ def evaluator_qa_node(state: CodingState) -> dict:
     )
 
     raw = client.generate(system, user)
-    grade = _parse_json(raw, "evaluator_qa")
+    grade = parse_and_validate_artifact(raw, "evaluator_grade")
 
     # Merge automated result with LLM evaluation
     if grade.get("overall_pass") is None:

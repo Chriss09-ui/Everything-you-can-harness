@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact, validate_artifact
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -47,12 +47,19 @@ def planner_node(state: CodingState) -> dict:
             append_progress_log(state["run_id"], "PLANNER",
                 f"Loaded harness_design_draft.json from {draft_path}")
 
+    # Schema guard at the architecture→coding boundary. We only enforce when
+    # the draft carries final_spec's version marker — otherwise it's a hand-
+    # rolled fixture (e.g. coding-layer-only test), and strict validation
+    # would just impede local development.
+    if draft and draft.get("version"):
+        validate_artifact(draft, "harness_design_draft")
+
     client = get_llm_client()
     system = get_coding_prompt("coding_planner")
     user = f"请基于以下 harness 架构设计包，生成完整的产品规格说明书：\n\n{json.dumps(draft, indent=2, ensure_ascii=False)}"
 
     raw = client.generate(system, user)
-    spec = _parse_json(raw, "spec")
+    spec = parse_and_validate_artifact(raw, "spec")
 
     write_json(state["run_id"], "spec.json", spec)
     state["spec"] = spec

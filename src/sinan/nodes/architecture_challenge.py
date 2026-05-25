@@ -28,7 +28,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_and_validate_artifact
 
 
 def architecture_challenge_node(state: HarnessBuilderState) -> dict:
@@ -48,7 +48,7 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     )
 
     raw = client.generate(system, user)
-    review = _parse_json(raw, "architecture_review")
+    review = parse_and_validate_artifact(raw, "architecture_review")
 
     write_json(state["run_id"], "architecture_review.json", review)
     state["architecture_review"] = review

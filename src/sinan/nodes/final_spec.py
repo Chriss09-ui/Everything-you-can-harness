@@ -31,6 +31,7 @@ from ..artifacts import (
     append_decision_log, finalize_phase, get_artifact_summary,
     load_state_or_file,
 )
+from ..validation import validate_artifact
 
 
 def final_spec_node(state: HarnessBuilderState) -> dict:
@@ -58,6 +59,10 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
         reviews, adjustments, arch_review, arch_pack,
     )
 
+    # Schema guard: harness_design_draft is the architecture→coding contract.
+    # Validate the Python-assembled dict before writing so silent field drift
+    # in _build_ai_draft fails fast.
+    validate_artifact(draft, "harness_design_draft")
     write_json(state["run_id"], "harness_design_draft.json", draft, versioned=True)
     state["harness_design_draft"] = draft
     state["current_phase"] = "FINAL_SPEC"

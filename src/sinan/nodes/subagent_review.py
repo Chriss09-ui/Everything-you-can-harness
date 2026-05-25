@@ -29,7 +29,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_llm_json, parse_and_validate_artifact
 
 
 # 子代理配置
@@ -118,7 +118,9 @@ def _call_subagent(client, brief_text: str, framework_text: str, name: str, role
         f"请基于以上信息，设计你的模块。"
     )
     raw_design = client.generate(system, design_user)
-    design = _parse_json(raw_design, f"zonggong_{name}")
+    # detailed design shapes differ per sub-agent (memory/handoff/eval),
+    # so we only parse; schema is enforced on the wrapped subagent_outputs.
+    design = parse_llm_json(raw_design, f"zonggong_{name}")
 
     # Step 2: 子代理评审 framework
     review_prompt = get_prompt("subagent_review")
@@ -130,6 +132,6 @@ def _call_subagent(client, brief_text: str, framework_text: str, name: str, role
         f"请以 {name} 专家的视角，评审上述 framework 设计。"
     )
     raw_review = client.generate(review_system, review_user)
-    review = _parse_json(raw_review, f"subagent_review_{name}")
+    review = parse_and_validate_artifact(raw_review, "subagent_review_item")
 
     return {"design": design, "review": review}

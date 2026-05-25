@@ -39,6 +39,7 @@
 | 改 State schema | `state.py` 字段注释 + 该层指南的 "State 字段" 段 |
 | 改 `runs/<id>/` 下文件名或格式 | 该层 `NODES.md` 的 Artifacts 列 + README 的 "Run Artifacts" 段 |
 | 改 prompt 或 mock 输出 | 改 `prompts.py` 或 `mock_responses.py`，**无需**改合约文档（这些不是契约） |
+| 新增 artifact 字段 / 改 artifact 形状 | `src/sinan/validation.py` 的 `_REQUIRED_FIELDS` 对应条目 + 测试（`tests/test_validation.py`） |
 
 **为什么这么严**：这个系统的核心承诺是「Agent 通过文件交接」。如果代码里写的契约 ≠ 文档里写的契约，整个交接协议就垮了，新接手的 AI 会按文档去写、按代码去跑，永远对不上。
 
@@ -59,6 +60,8 @@ python3 -m venv .venv
 
 > `--from-brief` 和 `--from-design` 都依赖磁盘 artifact，无需保留内存 state。
 > 任何 node 都通过 `load_state_or_file()` 实现「state 优先 + 磁盘 fallback」。
+
+> **Schema 校验**：所有 LLM 产物在 `parse_and_validate_artifact()` 解析时校验；所有 Python 组装的产物（`harness_design_draft`、`bug_report`、`sprint_result`）在写盘前用 `validate_artifact()` 校验；跨层边界（planner 读 draft、framework_design 读 brief）做读后校验。Schema 定义在 [src/sinan/validation.py](src/sinan/validation.py)。
 
 ## 关键行为说明
 

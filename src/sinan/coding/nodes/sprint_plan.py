@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -54,7 +54,7 @@ def sprint_plan_node(state: CodingState) -> dict:
     user = "\n".join(user_parts)
 
     raw = client.generate(system, user)
-    contract_draft = _parse_json(raw, "sprint_contract")
+    contract_draft = parse_and_validate_artifact(raw, "sprint_contract")
 
     existing = state.get("sprint_contract") or {}
     if existing.get("agreed"):

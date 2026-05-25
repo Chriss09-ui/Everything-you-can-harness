@@ -28,7 +28,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_and_validate_artifact
 
 
 def arch_revise_node(state: HarnessBuilderState) -> dict:
@@ -66,7 +66,7 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     )
 
     raw = client.generate(system, user)
-    revision_brief = _parse_json(raw, "arch_revision_brief")
+    revision_brief = parse_and_validate_artifact(raw, "arch_revision_brief")
 
     write_json(state["run_id"], "arch_revision_brief.json", revision_brief)
     state["arch_revision_brief"] = revision_brief

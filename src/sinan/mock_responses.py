@@ -257,6 +257,49 @@ def register_mock_responses() -> None:
         "user_notification": "当 challenge_score > 3 时通知用户"
     }, ensure_ascii=False))
 
+    # 框架调整 (Framework Adjuster) — triggered by "逐条回应并调整 framework"
+    MockLLMClient.register("逐条回应并调整 framework", json.dumps({
+        "adjusted_framework": {
+            "nodes": [
+                {"name": "spec_expansion", "role": "扩展需求"},
+                {"name": "spec_challenge", "role": "质疑需求"},
+                {"name": "brief_compile", "role": "定稿需求契约"},
+                {"name": "framework_design", "role": "设计 harness 框架"},
+                {"name": "architecture_challenge", "role": "逆审架构"},
+                {"name": "approval_gate", "role": "风险分级"},
+                {"name": "final_spec", "role": "编译研发层设计稿"},
+            ],
+            "edges": [
+                {"from": "spec_expansion", "to": "spec_challenge"},
+                {"from": "framework_design", "to": "architecture_challenge"},
+                {"from": "architecture_challenge", "to": "approval_gate"},
+            ],
+            "conditional_edges": [
+                {"condition": "risk_level == low", "routes": "approval_gate -> final_spec"},
+            ],
+            "phase_sequence": ["需求契约", "架构设计", "架构逆审", "风险审批", "最终设计稿"],
+            "entry_point": "spec_expansion",
+            "end_state": "FINAL_SPEC",
+            "design_rationale": "保留契约化交接，按子代理评审意见微调。",
+        },
+        "feedback_responses": [
+            {"feedback": "需要更明确的 fallback 协议", "response": "accepted",
+             "rationale": "已在 design_rationale 中强调"}
+        ],
+        "preserved_elements": ["契约化交接", "四步辩论结构"],
+    }, ensure_ascii=False))
+
+    # 逆审修订简报 (Arch Reviser) — triggered by "请基于以上信息生成结构化的修订简报"
+    MockLLMClient.register("生成结构化的修订简报", json.dumps({
+        "revision_focus": "缩小过度设计、补全 handoff 缺口",
+        "must_fix": [
+            "为 wait_brief 增加用户输入格式校验",
+            "为 LLM 调用增加超时保护",
+        ],
+        "preserve": ["契约化交接", "四步辩论结构"],
+        "user_intent_summary": "降低复杂度，加强失败模式覆盖",
+    }, ensure_ascii=False))
+
     # 子代理评审报告 — all three review calls can share this shape in mock mode.
     MockLLMClient.register("评审当前 framework 设计", json.dumps({
         "agent_name": "mock_reviewer",

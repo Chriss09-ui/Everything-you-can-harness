@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from ..parse_json import _parse_json
+from sinan.validation import parse_and_validate_artifact
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -50,7 +50,7 @@ def sprint_setup_node(state: CodingState) -> dict:
     )
 
     raw = client.generate(system, user)
-    plan = _parse_json(raw, "sprint_setup")
+    plan = parse_and_validate_artifact(raw, "execution_plan")
 
     contract["execution_plan"] = plan
     write_json(state["run_id"], "sprint_contract.json", contract, versioned=True)

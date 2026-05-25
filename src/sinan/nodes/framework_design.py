@@ -27,7 +27,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_and_validate_artifact, validate_artifact
 
 
 def framework_design_node(state: HarnessBuilderState) -> dict:
@@ -40,6 +40,12 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
         or load_state_or_file(state, "requirement_pack")
         or {}
     )
+    # Schema guard at the requirement→architecture boundary.
+    # Skipped if brief is empty (no prior layer ran yet).
+    if brief and "confirmed_requirements" in brief:
+        validate_artifact(brief, "user_brief_form")
+    elif brief and "use_case_summary" in brief:
+        validate_artifact(brief, "requirement_pack")
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
 
     revision_context = _build_revision_context(state)
@@ -48,7 +54,7 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
     user = f"User Brief Form:\n{brief_text}\n{revision_context}\n\n【第一轮】请设计 harness 的整体框架结构。只输出初始方案即可。"
 
     raw = client.generate(system, user)
-    framework = _parse_json(raw, "framework_design")
+    framework = parse_and_validate_artifact(raw, "framework_design")
 
     write_json(state["run_id"], "framework_design.json", framework, versioned=True)
     state["framework_design"] = framework
