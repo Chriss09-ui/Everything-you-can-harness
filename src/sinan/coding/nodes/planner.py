@@ -4,7 +4,10 @@ Agent: Planner
 Loop:  Sprint (entry point)
 
 Reads:
-    state["harness_design_draft"]  — architecture layer output
+    state["harness_design_draft"]                       — design layer output (preferred)
+    runs/<run_id>/harness_design_draft.json (fallback)  — when state is empty,
+                                                          enables independent
+                                                          coding-layer startup
 
 Writes:
     state["spec"]          — full product spec dict
@@ -25,7 +28,7 @@ from ..parse_json import _parse_json
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, get_run_dir,
 )
 
 
@@ -33,9 +36,19 @@ def planner_node(state: CodingState) -> dict:
     update_run_state(state["run_id"], "PLANNER")
     append_progress_log(state["run_id"], "PLANNER", "Expanding design draft into product spec")
 
+    # Prefer state; fall back to disk so the coding layer can run independently
+    # (e.g. via `python -m sinan.cli --from-design <run_id>`).
+    draft = state.get("harness_design_draft") or {}
+    if not draft:
+        draft_path = get_run_dir(state["run_id"]) / "harness_design_draft.json"
+        if draft_path.exists():
+            with open(draft_path, encoding="utf-8") as f:
+                draft = json.load(f)
+            append_progress_log(state["run_id"], "PLANNER",
+                f"Loaded harness_design_draft.json from {draft_path}")
+
     client = get_llm_client()
     system = get_coding_prompt("coding_planner")
-    draft = state.get("harness_design_draft") or {}
     user = f"请基于以下 harness 架构设计包，生成完整的产品规格说明书：\n\n{json.dumps(draft, indent=2, ensure_ascii=False)}"
 
     raw = client.generate(system, user)

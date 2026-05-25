@@ -73,10 +73,13 @@ Routes:
 |------|------|
 | Agent | Planner |
 | Loop | Sprint (入口) |
-| Reads | `harness_design_draft` (state) |
+| Reads | `harness_design_draft` (state, 优先) / `runs/<run_id>/harness_design_draft.json` (磁盘 fallback) |
 | Writes | `spec`, `feature_list`, `current_phase` |
 | Artifacts | `spec.json` |
 | Routes | → `sprint_plan` (linear) |
+
+> **跨层交接**：planner 是设计层 → 研发层的入口。优先从 state 读 draft；state 为空时从磁盘读，
+> 让研发层可以独立启动（CLI 的 `--from-design <run_id>`）。
 
 ### 2. sprint_plan
 

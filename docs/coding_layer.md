@@ -140,12 +140,19 @@
 
 ## 5. 输入 / 输出契约
 
-### 入口
-- `state["harness_design_draft"]` — 架构层产出的设计稿（在 `cli.py` 第 78 行传入）
+### 入口（两种来源，按优先级）
+1. `state["harness_design_draft"]` — 架构层产出的设计稿，由 cli.py 在完整流程中直接传入
+2. `runs/<run_id>/harness_design_draft.json` — 当 state 为空时 `planner_node` 自动从磁盘读取
+
+第 2 种来源支持 `python -m sinan.cli --from-design <run_id>` 跳过设计层直接进研发层（详见 README）。
+研发层因此可以**独立从文件启动**，不依赖前置内存 state。
 
 ### 出口
-- `runs/<run_id>_coding/harness/` 下的**完整代码仓**（含 git history、src/、测试）
-- `runs/<run_id>_coding/sprint_result.json` — 最终 sprint 评分摘要
+- `runs/<run_id>/harness/` 下的**完整代码仓**（含 git history、src/、测试）
+- `runs/<run_id>/sprint_result.json` — 最终 sprint 评分摘要
+
+> **统一 run_id**：设计层和研发层共享同一个 `run_id`。设计层产物落在 `runs/<run_id>/`，
+> 研发层代码仓落在 `runs/<run_id>/harness/`。所有跨层文件物理上同目录可达。
 
 ### Artifact 全清单（按 sprint 生命周期）
 
@@ -322,10 +329,10 @@
 
 ## 11. 怎么调试
 
-- 看 `runs/<run_id>_coding/decision_log.md` — sprint 协商、QA 评分、reject 原因
-- 看 `runs/<run_id>_coding/harness/claude-progress.txt` — 当前进度
-- 看 `runs/<run_id>_coding/harness/feature_list.json` — 哪些 feature 已完成 / 失败
-- `cd runs/<run_id>_coding/harness && git log --oneline` — feature commit 序列
+- 看 `runs/<run_id>/decision_log.md` — sprint 协商、QA 评分、reject 原因
+- 看 `runs/<run_id>/harness/claude-progress.txt` — 当前进度
+- 看 `runs/<run_id>/harness/feature_list.json` — 哪些 feature 已完成 / 失败
+- `cd runs/<run_id>/harness && git log --oneline` — feature commit 序列
 - 看 versioned 文件如 `sprint_contract_v1.json`, `_v2.json` — 协商演进
 - 跑 `pytest tests/test_coding_e2e_mock.py -v` — mock 模式下走完整研发流水
 - 跑 `pytest tests/test_coding_graph_smoke.py -v` — 仅验证 graph 结构

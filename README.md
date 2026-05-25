@@ -26,9 +26,16 @@ pip install pytest
 # 3. Run the CLI from the repo root
 PYTHONPATH=src python -m sinan.cli
 
+# 3b. Or resume from a previous design (skip design layer)
+PYTHONPATH=src python -m sinan.cli --from-design <run_id>
+
 # 4. Run tests
 PYTHONPATH=src .venv/bin/python -m pytest -q
 ```
+
+`--from-design <run_id>` reads `runs/<run_id>/harness_design_draft.json` from
+disk and jumps straight into the coding layer — useful for retrying the
+coding layer without rerunning the (slow, interactive) design layer.
 
 Repo 用 `src/` 布局，没有 `pyproject.toml`，所以运行模块前需要 `PYTHONPATH=src`。
 

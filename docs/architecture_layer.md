@@ -83,8 +83,11 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 - （如果是 revision 轮次）`runs/<run_id>/arch_revision_brief.json` — 上一轮 reject 的修订简报
 
 ### 出口
-- `runs/<run_id>/harness_design_draft.json` — **研发层的唯一输入**
+- `runs/<run_id>/harness_design_draft.json` — **研发层的输入**（落盘是契约，state 是热路径）
 - `runs/<run_id>/harness_design_final.md` — 人类可读的最终设计稿
+
+> 研发层的 `planner_node` 优先读 state，state 为空时从 `harness_design_draft.json` 读。
+> 因此架构层一旦写盘成功，研发层可以独立启动（`python -m sinan.cli --from-design <run_id>`）。
 
 ### 中间产物（按顺序生成）
 

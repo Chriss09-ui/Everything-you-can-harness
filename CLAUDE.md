@@ -64,7 +64,7 @@ python3 -m venv .venv
 
 ## Run 产出
 
-一次运行产出到 `runs/<run_id>/`，研发层产出到 `runs/<run_id>_coding/harness/`。`runs/` 已被 `.gitignore` 屏蔽，不会进 git。
+一次运行产出到 `runs/<run_id>/`，设计层 artifact 在根目录、研发层代码仓在 `runs/<run_id>/harness/`。`runs/` 已被 `.gitignore` 屏蔽，不会进 git。
 
 详细 artifact 清单见各层指南。
 

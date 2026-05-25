@@ -1,5 +1,12 @@
-"""CLI entrypoint for 司南 Harness Builder."""
+"""CLI entrypoint for 司南 Harness Builder.
+
+Usage:
+    python -m sinan.cli                       # full pipeline: design → coding
+    python -m sinan.cli --from-design <id>    # skip design layer, resume coding
+                                              # from runs/<id>/harness_design_draft.json
+"""
 from __future__ import annotations
+import argparse
 import uuid
 import sys
 from pathlib import Path
@@ -10,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from sinan.state import make_initial_state
 from sinan.graph import compile_graph
 from sinan.artifacts import (
-    ensure_run_dir, append_progress_log, append_decision_log,
+    ensure_run_dir, get_run_dir, append_progress_log, append_decision_log,
     update_run_state,
 )
 from sinan.nodes.intake import intake_node
@@ -21,6 +28,14 @@ from sinan.coding.mock_responses import register_coding_mock_responses
 
 
 def main():
+    parser = argparse.ArgumentParser(description="司南 Harness Builder")
+    parser.add_argument(
+        "--from-design",
+        metavar="RUN_ID",
+        help="Skip design layer; resume coding layer from runs/<RUN_ID>/harness_design_draft.json",
+    )
+    args = parser.parse_args()
+
     # Register mock LLM responses (no-op if real LLM is configured)
     register_mock_responses()
     register_coding_mock_responses()
@@ -29,6 +44,21 @@ def main():
     print("司南 Harness Builder — V1 垂直切片")
     print("=" * 60)
     print()
+
+    if args.from_design:
+        run_id = args.from_design
+        draft_path = get_run_dir(run_id) / "harness_design_draft.json"
+        if not draft_path.exists():
+            print(f"找不到设计稿: {draft_path}")
+            print("请先跑完整流程，或检查 run_id 是否正确。")
+            sys.exit(1)
+        print(f"从 run_id={run_id} 的设计稿恢复，跳过设计层。")
+        # Coding layer will read the draft from disk via planner's fallback.
+        # Pass empty dict; planner_node falls back to file read.
+        _run_coding_layer(run_id, harness_draft={})
+        return
+
+    # ── Full pipeline ──
 
     # Collect user input
     print("请描述你想构建的 agentic harness（用一段自然语言描述你的需求）：")
@@ -76,15 +106,22 @@ def main():
 
     # ── Phase 2: Coding Layer ──
     harness_draft = final_state.get("harness_design_draft") or {}
+    _run_coding_layer(run_id, harness_draft)
 
+
+def _run_coding_layer(run_id: str, harness_draft: dict) -> None:
+    """Run the coding layer against runs/<run_id>/.
+
+    Coding artifacts go into runs/<run_id>/harness/. The draft is passed via
+    state when available; otherwise the planner falls back to reading
+    runs/<run_id>/harness_design_draft.json from disk.
+    """
     print("\n" + "=" * 60)
     print("司南：进入研发层")
     print("=" * 60)
 
-    coding_run_id = f"{run_id}_coding"
-    ensure_run_dir(coding_run_id)
-    coding_state = make_coding_state(coding_run_id, harness_draft)
-
+    ensure_run_dir(run_id)
+    coding_state = make_coding_state(run_id, harness_draft)
     coding_graph = compile_coding_graph()
 
     try:
@@ -94,11 +131,11 @@ def main():
         print("=" * 60)
         sprint_result = coding_final.get("sprint_result") or {}
         print(f"\n总完成率: {sprint_result.get('completion_pct', 0)}%")
-        print(f"产出目录: runs/{coding_run_id}/harness/")
+        print(f"产出目录: runs/{run_id}/harness/")
         print(f"\n流程结束。")
     except Exception as e:
         print(f"\n研发层异常: {e}")
-        append_decision_log(coding_run_id, {
+        append_decision_log(run_id, {
             "phase": "SYSTEM",
             "type": "error",
             "content": f"Coding pipeline failed: {str(e)}",
