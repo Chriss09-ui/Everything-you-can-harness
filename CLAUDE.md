@@ -1,136 +1,79 @@
 # 司南 Harness Builder — Contributor Context
 
-## One-Screen Summary
+> 给所有上手这个 repo 的 AI / 人类协作者的工作守则。**先读这里，再读代码。**
 
-司南是一个用 LangGraph 编排的三层系统：**需求层**与用户制定完整需求契约，**架构层**把需求转成经过审查的 harness 设计稿，**研发层**把设计稿变成可运行的代码。
+## 一页纸概览
 
-## Canonical Workflow
+司南是用 LangGraph 编排的三层多智能体系统：
 
-### Requirement Layer (需求层)
+| 层 | 目的 | 入口契约 | 出口契约 |
+|---|---|---|---|
+| **需求层** | 把模糊需求 → 经过辩论的需求契约 | 用户一句话 | `user_brief_form.json` |
+| **架构层** | 把需求契约 → 经过审查的设计稿 | `user_brief_form.json` | `harness_design_draft.json` |
+| **研发层** | 把设计稿 → 可运行代码 | `harness_design_draft.json` | `runs/<id>/harness/` 下的代码仓 |
 
-`spec_expansion` → `spec_challenge` → `brief_debate` → `sinan_debrief` → `brief_compile`
+三层都遵守同一套**节点合约协议**：每个 node 只做一件事；路由集中在 `graph.py`；artifact（不是 state）是 agent 之间的真实交接。
 
-拓谱 → 诘问 → 辩论 → 用户确认 → 需求契约定稿。`brief_compile` 输出的 `user_brief_form.json` 是需求契约，作为进入架构层的前提。
+## 三层指南索引
 
-### Architecture Layer (架构层)
+接手某一层开发时，**先读对应的层级指南**，再读 NODES.md：
 
-`framework_design` → `subagent_review` → `framework_adjust` → `zonggong_integrate` → `architecture_challenge` → `approval_gate` → `sinan_approval` / `final_spec`
+| 层 | 指南（必读，AI 上手） | 合约表（查询） |
+|---|---|---|
+| 需求层 | [docs/requirement_layer.md](docs/requirement_layer.md) | [src/sinan/nodes/NODES.md](src/sinan/nodes/NODES.md) |
+| 架构层 | [docs/architecture_layer.md](docs/architecture_layer.md) | [src/sinan/nodes/NODES.md](src/sinan/nodes/NODES.md) |
+| 研发层 | [docs/coding_layer.md](docs/coding_layer.md) | [src/sinan/coding/NODES.md](src/sinan/coding/NODES.md) |
 
-四步辩论框架设计 → 子代理评审 → 框架调整 → 综合集成 → 架构挑战审查 → 审批门（低风险自动通过，高风险用户审批）→ `arch_revise` on rejection → `final_spec`。
+需求层 + 架构层共用同一个 graph (`src/sinan/graph.py`) 和同一份合约表，因为它们共享 `HarnessBuilderState`；研发层独立 (`src/sinan/coding/graph.py`)。
 
-### Coding Layer (研发层)
+## 改动同步原则（强制）
 
-嵌套循环结构，由 `src/sinan/coding/graph.py` 定义：
+> **任何改动代码的 PR/commit，必须在同一个 commit 内同步更新对应合约文档。未同步合约的 PR 视为不完整。**
 
+| 你改了什么 | 必须同步改 |
+|---|---|
+| 新增 / 删除 / 重命名 node | 该层 `NODES.md` 表格 + 该层指南的"节点清单"段 + `graph.py` 注册和路由 |
+| 改 node 的 Reads / Writes / Artifacts / Routes | 该层 `NODES.md` 该 node 行 + 该 node 文件头的 docstring |
+| 加 / 删 artifact 文件 | 该层 `NODES.md` 的 Artifacts 列 + 该层指南的 "Artifact 清单" 段 |
+| 改 graph 路由逻辑 / 条件分支 | 该层 `NODES.md` 的 Routes 列 + 该层指南的 ASCII 流程图 |
+| 改 State schema | `state.py` 字段注释 + 该层指南的 "State 字段" 段 |
+| 改 `runs/<id>/` 下文件名或格式 | 该层 `NODES.md` 的 Artifacts 列 + README 的 "Run Artifacts" 段 |
+| 改 prompt 或 mock 输出 | 改 `prompts.py` 或 `mock_responses.py`，**无需**改合约文档（这些不是契约） |
+
+**为什么这么严**：这个系统的核心承诺是「Agent 通过文件交接」。如果代码里写的契约 ≠ 文档里写的契约，整个交接协议就垮了，新接手的 AI 会按文档去写、按代码去跑，永远对不上。
+
+## 跑代码
+
+```bash
+# venv 已存在的话直接跑
+PYTHONPATH=src .venv/bin/python -m sinan.cli                  # 跑 CLI
+PYTHONPATH=src .venv/bin/python -m pytest -q                  # 跑测试
+
+# 没有 venv 就建一个
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install pytest
 ```
-planner → sprint_plan → sprint_negotiate → sprint_setup
-  → session_init → session_setup
-  → sanity_check
-    ├─ pass → pick_feature → implement_feature → test_feature
-    │         → commit_feature → (more? → pick_feature) → generator_review
-    │                                                     → evaluator_qa
-    │                                                       ├─ pass → sprint_complete
-    │                                                       └─ fail → evaluator_bugs → generator_fix → (self-test)
-    └─ fail → bug_triage → session_setup
-```
 
-- **Sprint Loop**: 最多 10 轮，每轮含 negotiation (≤3 轮)
-- **Session Loop**: 每次 session 重置上下文，读取磁盘 artifact 恢复
-- **Feature Loop**: 按优先级实现 feature，失败走 Fix Loop
-- **Fix Loop**: 最多 2 轮自修复 + 自测
+## 关键行为说明
 
-Coding layer definition: [src/sinan/coding/graph.py](/Users/chriss/Desktop/harness/src/sinan/coding/graph.py)
+- **用户交互目前是同步 CLI `input()`**，不是 LangGraph 原生 `interrupt() / resume()`。`pending_interrupt`、`resume_payload` 是 state 里的占位字段，未完整接入。
+- **架构层有真实的 revision loop**：用户 reject → `arch_revise` → 重入 `framework_design`，最多 2 轮，超出抛 RuntimeError。
+- **研发层 sprint 上限 10 轮**，每 sprint 内 negotiation ≤ 3 轮，fix loop ≤ 2 轮。
+- **跨 session 不依赖 state**：研发层每个 session 重置上下文，靠磁盘 artifact（`feature_list.json`, `claude-progress.txt`, `sprint_contract.json`, `evaluator_grade.json`, `bug_report.json`）重新 hydrate。
 
-## Core Files
+## Run 产出
 
-### Requirement + Architecture Layer (需求层 + 架构层)
+一次运行产出到 `runs/<run_id>/`，研发层产出到 `runs/<run_id>_coding/harness/`。`runs/` 已被 `.gitignore` 屏蔽，不会进 git。
 
-- [src/sinan/cli.py](/Users/chriss/Desktop/harness/src/sinan/cli.py): terminal entrypoint (runs design → coding sequentially)
-- [src/sinan/state.py](/Users/chriss/Desktop/harness/src/sinan/state.py): design layer state schema
-- [src/sinan/graph.py](/Users/chriss/Desktop/harness/src/sinan/graph.py): requirement + architecture layer graph
-- [src/sinan/nodes/NODES.md](/Users/chriss/Desktop/harness/src/sinan/nodes/NODES.md): **Node 合约参考文档** — 需求层+架构层每个 node 的 Reads/Writes/Artifacts/Routes
-- [src/sinan/artifacts.py](/Users/chriss/Desktop/harness/src/sinan/artifacts.py): run folders, logs, versioned artifact writes
-- [src/sinan/llm.py](/Users/chriss/Desktop/harness/src/sinan/llm.py): mock and provider adapters
-- [src/sinan/mock_responses.py](/Users/chriss/Desktop/harness/src/sinan/mock_responses.py): deterministic mock outputs
-- [src/sinan/prompts.py](/Users/chriss/Desktop/harness/src/sinan/prompts.py): role prompts
+详细 artifact 清单见各层指南。
 
-### Coding Layer
+## 历史遗留命名（如果在旧代码 / 旧文档里看到）
 
-- [src/sinan/coding/](/Users/chriss/Desktop/harness/src/sinan/coding/): coding layer package
-- [src/sinan/coding/NODES.md](/Users/chriss/Desktop/harness/src/sinan/coding/NODES.md): **Node 合约参考文档** — 每个 node 的 Reads/Writes/Artifacts/Routes 一目了然
-- [src/sinan/coding/state.py](/Users/chriss/Desktop/harness/src/sinan/coding/state.py): `CodingState` TypedDict + `make_coding_state()`
-- [src/sinan/coding/graph.py](/Users/chriss/Desktop/harness/src/sinan/coding/graph.py): 17 nodes, 6 conditional routers
-- [src/sinan/coding/prompts.py](/Users/chriss/Desktop/harness/src/sinan/coding/prompts.py): Planner / Generator / Evaluator / Initializer / Negotiator prompts
-- [src/sinan/coding/git.py](/Users/chriss/Desktop/harness/src/sinan/coding/git.py): thin git subprocess wrappers
-- [src/sinan/coding/testing.py](/Users/chriss/Desktop/harness/src/sinan/coding/testing.py): E2E test abstraction (Playwright + fallback)
-- [src/sinan/coding/mock_responses.py](/Users/chriss/Desktop/harness/src/sinan/coding/mock_responses.py): coding layer mock triggers
-- [src/sinan/coding/nodes/](/Users/chriss/Desktop/harness/src/sinan/coding/nodes/): 17 node modules (每个模块头部有标准合约 docstring)
+`wait_brief`, `wait_approval`, `architecture_draft`, `brief_gate` —— 都已被替换。现在叫 `sinan_debrief`, `sinan_approval`, 四步辩论流程。看到这些名字直接当历史档案。
 
-## Important Behavioral Notes
+## 仓库环境
 
-- User interaction is currently synchronous CLI `input()` inside nodes, not LangGraph `interrupt()` / `resume()`.
-- `pending_interrupt` and `resume_payload` exist in state, but they are bookkeeping fields rather than a fully implemented resumable control path.
-- Architecture revision is a real loop: reject/request changes -> `arch_revise` -> `framework_design`.
-- Rejection loops are capped at 2 rounds.
-
-## Artifact Model
-
-A run writes into `runs/<run_id>/`.
-
-Typical artifacts:
-
-- `requirement_pack.json`
-- `spec_review.json`
-- `brief_debate.json`
-- `user_brief_form.json`
-- `framework_design.json`
-- `subagent_reviews.json`
-- `subagent_outputs.json`
-- `framework_adjustment.json`
-- `architecture_pack.json`
-- `architecture_review.json`
-- `arch_revision_brief.json` when needed
-- `harness_design_draft.json`
-- `harness_design_final.md`
-
-### Coding Layer Artifacts
-
-Coding layer writes into `runs/<run_id>/harness/`:
-
-- `feature_list.json` — feature registry (updated per session)
-- `claude-progress.txt` — markdown progress tracker
-- `init.sh` — session initialization script
-- `sprint_contract.json` — negotiated sprint goals (versioned)
-- `sprint_result.json` — sprint completion summary
-- `evaluator_grade.json` — QA evaluation scores (versioned)
-- `bug_report.json` — bug report from evaluator
-
-Plus `src/` with generated harness code and `.git/` for code history.
-- `decision_log.md`
-- `progress_log.md`
-- `run_state.yaml`
-- `version_registry.json` when versioned writes occur
-
-## Development Notes
-
-- This repo uses a `src/` layout.
-- From the repo root, use `PYTHONPATH=src` when running modules directly.
-- The virtualenv-local test command is `PYTHONPATH=src .venv/bin/python -m pytest -q`.
-- Some smoke tests still reference legacy node names and will need alignment if you update graph assertions.
-
-### Coding Layer 开发规范
-
-**交接协议核心**：磁盘文件是 Agent 间的唯一交接协议。跨 Session 的信息通过文件传递，不依赖 state 持久化。详见 [NODES.md](/Users/chriss/Desktop/harness/src/sinan/coding/NODES.md)。
-
-每个 node 模块头部有标准合约 docstring，包含：Agent / Loop / Reads / Writes / Artifacts / Routes。
-
-## Legacy Names To Ignore
-
-If you see these in old docs, old tests, or cached files, treat them as historical:
-
-- `wait_brief`
-- `wait_approval`
-- `architecture_draft`
-- `brief_gate`
-
-The current implementation has replaced them with `sinan_debrief`, `sinan_approval`, and the four-step architecture debate flow.
+- `src/` 布局，运行需要 `PYTHONPATH=src`。
+- `.venv/`, `__pycache__/`, `runs/` 都被 `.gitignore` 屏蔽，**不要 `git add` 它们**。
+- 老仓库 `claude-code-` 是历史档案，本仓库 `Everything-you-can-harness` 是当前主线。
