@@ -6,7 +6,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from sinan.state import make_initial_state, HarnessBuilderState
-from sinan.graph import build_graph, compile_graph
+from sinan.graph import (
+    build_graph, compile_graph,
+    build_architecture_graph, compile_architecture_graph,
+)
 from sinan.nodes.intake import intake_node
 
 
@@ -37,6 +40,17 @@ def test_graph_has_expected_nodes():
         "final_spec",
     }
     assert expected.issubset(nodes), f"Missing nodes: {expected - nodes}"
+
+
+def test_architecture_graph_compiles():
+    """Architecture-only graph (entered from --from-brief) should compile."""
+    graph = compile_architecture_graph()
+    assert graph is not None
+    nodes = set(graph.nodes)
+    # Requirement-layer nodes are still registered for symmetry with full graph,
+    # but the entry point is framework_design.
+    assert "framework_design" in nodes
+    assert "final_spec" in nodes
 
 
 def test_graph_has_conditional_edges():

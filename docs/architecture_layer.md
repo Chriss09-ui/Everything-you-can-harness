@@ -78,12 +78,17 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 ## 4. 输入 / 输出契约
 
-### 入口
+### 入口（两种启动方式）
+1. **完整流程**：从需求层走过来，`state["user_brief_form"]` 已经在内存
+2. **`--from-brief <run_id>`**：从磁盘读 `runs/<run_id>/user_brief_form.json`，直接进 `framework_design`
+
+不管哪种方式，所有架构层 node 都通过 `load_state_or_file(state, key)` 读取——state 没有就从磁盘对应的 `runs/<run_id>/<key>.json` 读。意味着架构层 **任意节点都可以单独重跑**，前提是上游 artifact 存在于磁盘。
+
 - `runs/<run_id>/user_brief_form.json` — 需求层产出的自包含需求契约。它包含用户确认/拒绝/优先级信息，并保留目标、范围、成功标准、约束等需求包核心字段。
 - （如果是 revision 轮次）`runs/<run_id>/arch_revision_brief.json` — 上一轮 reject 的修订简报
 
 ### 出口
-- `runs/<run_id>/harness_design_draft.json` — **研发层的输入**（落盘是契约，state 是热路径）
+- `runs/<run_id>/harness_design_draft.json` — **研发层的输入**（落盘是契约，state 是热路径）。**versioned 写入**：每次重跑都自动归档为 `harness_design_draft_v1.json` / `_v2.json` ... 可回滚 / 可 diff。
 - `runs/<run_id>/harness_design_final.md` — 人类可读的最终设计稿
 
 > 研发层的 `planner_node` 优先读 state，state 为空时从 `harness_design_draft.json` 读。

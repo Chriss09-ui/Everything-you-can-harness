@@ -25,7 +25,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from .spec_expansion import _parse_json
 
@@ -35,7 +35,11 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
     append_progress_log(state["run_id"], "FRAMEWORK_DESIGN", "Starting framework design (Round 1)")
 
     client = get_llm_client()
-    brief = state.get("user_brief_form") or state.get("requirement_pack") or {}
+    brief = (
+        load_state_or_file(state, "user_brief_form")
+        or load_state_or_file(state, "requirement_pack")
+        or {}
+    )
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
 
     revision_context = _build_revision_context(state)

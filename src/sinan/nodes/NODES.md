@@ -220,9 +220,9 @@ Routes:
 |------|------|
 | Agent | 司南 (编译者) |
 | Layer | 架构层 (出口) |
-| Reads | `architecture_pack`, `user_brief_form` |
+| Reads | `architecture_pack`, `user_brief_form`（均经 `load_state_or_file()`，state 空时回退到磁盘） |
 | Writes | `harness_design_draft`, `current_phase` |
-| Artifacts | `harness_design_draft.json`, `harness_design_final.md` |
+| Artifacts | `harness_design_draft.json` (**versioned**), `harness_design_final.md` |
 | Routes | → END |
 
 > **层间交接点：** `harness_design_draft.json` 是架构层→研发层的唯一交接物。

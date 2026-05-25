@@ -46,14 +46,19 @@
 
 ```bash
 # venv 已存在的话直接跑
-PYTHONPATH=src .venv/bin/python -m sinan.cli                  # 跑 CLI
-PYTHONPATH=src .venv/bin/python -m pytest -q                  # 跑测试
+PYTHONPATH=src .venv/bin/python -m sinan.cli                       # 完整流程
+PYTHONPATH=src .venv/bin/python -m sinan.cli --from-brief <id>     # 跳过需求层
+PYTHONPATH=src .venv/bin/python -m sinan.cli --from-design <id>    # 跳过整个设计层
+PYTHONPATH=src .venv/bin/python -m pytest -q                       # 跑测试
 
 # 没有 venv 就建一个
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pip install pytest
 ```
+
+> `--from-brief` 和 `--from-design` 都依赖磁盘 artifact，无需保留内存 state。
+> 任何 node 都通过 `load_state_or_file()` 实现「state 优先 + 磁盘 fallback」。
 
 ## 关键行为说明
 

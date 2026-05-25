@@ -29,6 +29,7 @@ from ..state import HarnessBuilderState
 from ..artifacts import (
     write_json, write_md, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, get_artifact_summary,
+    load_state_or_file,
 )
 
 
@@ -36,14 +37,18 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "FINAL_SPEC")
     append_progress_log(state["run_id"], "FINAL_SPEC", "Compiling final design draft")
 
-    brief = state.get("user_brief_form") or state.get("requirement_pack") or {}
-    framework = state.get("framework_design") or {}
-    reviews = state.get("subagent_reviews", {})
-    adjustments = state.get("framework_adjustments", {})
-    arch_review = state.get("architecture_review") or {}
-    arch_pack = state.get("architecture_pack") or {}
+    brief = (
+        load_state_or_file(state, "user_brief_form")
+        or load_state_or_file(state, "requirement_pack")
+        or {}
+    )
+    framework = load_state_or_file(state, "framework_design")
+    reviews = load_state_or_file(state, "subagent_reviews")
+    adjustments = load_state_or_file(state, "framework_adjustments", filename="framework_adjustment.json")
+    arch_review = load_state_or_file(state, "architecture_review")
+    arch_pack = load_state_or_file(state, "architecture_pack")
     subagent_outputs = (
-        state.get("subagent_outputs")
+        load_state_or_file(state, "subagent_outputs")
         or arch_pack.get("subagent_outputs", {})
         or {}
     )
@@ -53,7 +58,7 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
         reviews, adjustments, arch_review, arch_pack,
     )
 
-    write_json(state["run_id"], "harness_design_draft.json", draft)
+    write_json(state["run_id"], "harness_design_draft.json", draft, versioned=True)
     state["harness_design_draft"] = draft
     state["current_phase"] = "FINAL_SPEC"
     state["artifact_versions"]["harness_design_draft"] = "1.0"

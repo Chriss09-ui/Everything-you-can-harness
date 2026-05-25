@@ -26,16 +26,24 @@ pip install pytest
 # 3. Run the CLI from the repo root
 PYTHONPATH=src python -m sinan.cli
 
-# 3b. Or resume from a previous design (skip design layer)
+# 3b. Or skip the requirement layer (uses an existing user_brief_form.json)
+PYTHONPATH=src python -m sinan.cli --from-brief <run_id>
+
+# 3c. Or skip the entire design layer (uses an existing harness_design_draft.json)
 PYTHONPATH=src python -m sinan.cli --from-design <run_id>
 
 # 4. Run tests
 PYTHONPATH=src .venv/bin/python -m pytest -q
 ```
 
-`--from-design <run_id>` reads `runs/<run_id>/harness_design_draft.json` from
-disk and jumps straight into the coding layer — useful for retrying the
-coding layer without rerunning the (slow, interactive) design layer.
+Resume flags read from disk and jump into the corresponding layer:
+
+- `--from-brief <run_id>` — reads `runs/<run_id>/user_brief_form.json`, skips the
+  requirement layer, re-runs architecture + coding. Use to retry an
+  architecture / design iteration without re-prompting the user.
+- `--from-design <run_id>` — reads `runs/<run_id>/harness_design_draft.json`,
+  skips both design layers, re-runs coding only. Use to retry the slow coding
+  layer without re-running the (interactive) design layers.
 
 Repo 用 `src/` 布局，没有 `pyproject.toml`，所以运行模块前需要 `PYTHONPATH=src`。
 

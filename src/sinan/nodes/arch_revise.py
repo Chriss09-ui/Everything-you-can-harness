@@ -26,7 +26,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from .spec_expansion import _parse_json
 
@@ -38,9 +38,9 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     client = get_llm_client()
     system = get_prompt("arch_revise")
 
-    arch = state.get("architecture_pack") or {}
-    review = state.get("architecture_review") or {}
-    brief = state.get("user_brief_form") or {}
+    arch = load_state_or_file(state, "architecture_pack")
+    review = load_state_or_file(state, "architecture_review")
+    brief = load_state_or_file(state, "user_brief_form")
     revision_round = state.get("arch_reject_count", 0)
     resume = state.get("resume_payload") or {}
     user_intent = resume.get("user_intent", "")

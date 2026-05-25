@@ -27,7 +27,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from .spec_expansion import _parse_json
 
@@ -37,9 +37,13 @@ def framework_adjust_node(state: HarnessBuilderState) -> dict:
     append_progress_log(state["run_id"], "FRAMEWORK_ADJUST", "Framework agent adjusting based on sub-agent reviews")
 
     client = get_llm_client()
-    brief = state.get("user_brief_form") or state.get("requirement_pack") or {}
-    framework = state.get("framework_design") or {}
-    reviews = state.get("subagent_reviews") or {}
+    brief = (
+        load_state_or_file(state, "user_brief_form")
+        or load_state_or_file(state, "requirement_pack")
+        or {}
+    )
+    framework = load_state_or_file(state, "framework_design")
+    reviews = load_state_or_file(state, "subagent_reviews")
 
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
     framework_text = json.dumps(framework, indent=2, ensure_ascii=False)

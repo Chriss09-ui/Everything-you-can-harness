@@ -23,13 +23,13 @@ Routes:
 """
 from __future__ import annotations
 from ..state import HarnessBuilderState
-from ..artifacts import append_progress_log, append_decision_log
+from ..artifacts import append_progress_log, append_decision_log, load_state_or_file
 
 
 def sinan_approval_node(state: HarnessBuilderState) -> dict:
     """Show architecture summary and collect user approval decision."""
-    arch = state.get("architecture_pack") or {}
-    review = state.get("architecture_review") or {}
+    arch = load_state_or_file(state, "architecture_pack")
+    review = load_state_or_file(state, "architecture_review")
     gate_flags = state.get("gate_flags", {})
 
     print("\n" + "=" * 60)

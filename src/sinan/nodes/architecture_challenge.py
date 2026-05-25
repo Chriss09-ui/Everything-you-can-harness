@@ -26,7 +26,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from .spec_expansion import _parse_json
 
@@ -38,8 +38,8 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     client = get_llm_client()
     system = get_prompt("nishen")
 
-    arch = state.get("architecture_pack") or {}
-    brief = state.get("user_brief_form") or {}
+    arch = load_state_or_file(state, "architecture_pack")
+    brief = load_state_or_file(state, "user_brief_form")
 
     user = (
         f"Architecture Pack:\n{json.dumps(arch, indent=2, ensure_ascii=False)}\n\n"

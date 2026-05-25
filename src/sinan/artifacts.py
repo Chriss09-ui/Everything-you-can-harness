@@ -55,6 +55,43 @@ def get_current_artifact(run_id: str, artifact_name: str) -> Optional[dict]:
     return None
 
 
+def load_state_or_file(
+    state: dict,
+    key: str,
+    filename: Optional[str] = None,
+    default: Any = None,
+) -> Any:
+    """Read ``state[key]`` if present; otherwise read ``runs/<run_id>/<filename>``.
+
+    Implements the project's "files are the only handoff protocol" principle
+    at node read time: prefer the hot in-memory state, but fall back to disk
+    so that any node can be re-entered after a crash or invoked independently
+    (e.g. via --from-design / --from-brief).
+
+    Args:
+        state: the LangGraph state dict (must contain "run_id").
+        key:   state field name to look up.
+        filename: artifact filename relative to runs/<run_id>/. Defaults to
+                  ``"<key>.json"`` which matches the project convention.
+        default: value returned when both state and file are missing/empty.
+                 Defaults to ``{}`` for dict-shaped artifacts.
+
+    Returns the state value, the loaded JSON, or ``default``.
+    """
+    value = state.get(key)
+    if value:
+        return value
+    run_id = state.get("run_id")
+    if not run_id:
+        return {} if default is None else default
+    fname = filename or f"{key}.json"
+    path = get_run_dir(run_id) / fname
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return {} if default is None else default
+
+
 def get_artifact_summary(run_id: str) -> dict:
     """Return a summary of all artifacts and their version counts."""
     registry = _get_registry(run_id)

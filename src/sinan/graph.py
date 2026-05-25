@@ -21,10 +21,38 @@ from .nodes import (
 
 
 def build_graph() -> StateGraph:
-    """Build and return the Sinan StateGraph."""
-    g = StateGraph(HarnessBuilderState)
+    """Build and return the full Sinan StateGraph (requirement + architecture layers)."""
+    g = _register_all_nodes(StateGraph(HarnessBuilderState))
 
-    # ── Register all nodes ──
+    g.set_entry_point("spec_expansion")
+
+    # ── 需求层：拓谱 → 诘问 → 辩论 → 用户表单 → 契约 ──
+    g.add_edge("spec_expansion", "spec_challenge")
+    g.add_edge("spec_challenge", "brief_debate")
+    g.add_edge("brief_debate", "sinan_debrief")
+    g.add_edge("sinan_debrief", "brief_compile")
+    g.add_edge("brief_compile", "framework_design")
+
+    _wire_architecture_edges(g)
+    return g
+
+
+def build_architecture_graph() -> StateGraph:
+    """Build a graph that skips the requirement layer.
+
+    Use when the user_brief_form is already on disk (e.g. via
+    `python -m sinan.cli --from-brief <run_id>`) — entry point is
+    framework_design, so the architecture layer runs against the
+    pre-existing brief without re-prompting the user.
+    """
+    g = _register_all_nodes(StateGraph(HarnessBuilderState))
+    g.set_entry_point("framework_design")
+    _wire_architecture_edges(g)
+    return g
+
+
+def _register_all_nodes(g: StateGraph) -> StateGraph:
+    """Register every design-layer node on the graph."""
     g.add_node("spec_expansion", _wrap(spec_expansion.spec_expansion_node))
     g.add_node("spec_challenge", _wrap(spec_challenge.spec_challenge_node))
     g.add_node("brief_debate", _wrap(brief_debate.brief_debate_node))
@@ -47,23 +75,14 @@ def build_graph() -> StateGraph:
 
     # ── Final output ──
     g.add_node("final_spec", _wrap(final_spec.final_spec_node))
+    return g
 
-    # Entry point
-    g.set_entry_point("spec_expansion")
 
-    # ── 需求层：拓谱 → 诘问 → 辩论 → 用户表单 → 契约 ──
-    g.add_edge("spec_expansion", "spec_challenge")
-    g.add_edge("spec_challenge", "brief_debate")
-    g.add_edge("brief_debate", "sinan_debrief")
-    g.add_edge("sinan_debrief", "brief_compile")
-
-    # ── 契约后进入架构层（四步辩论） ──
-    g.add_edge("brief_compile", "framework_design")
+def _wire_architecture_edges(g: StateGraph) -> None:
+    """Wire all architecture-layer edges (shared by full and architecture-only graphs)."""
     g.add_edge("framework_design", "subagent_review")
     g.add_edge("subagent_review", "framework_adjust")
     g.add_edge("framework_adjust", "zonggong_integrate")
-
-    # ── 架构审查 ──
     g.add_edge("zonggong_integrate", "architecture_challenge")
     g.add_edge("architecture_challenge", "approval_gate")
     g.add_edge("arch_revise", "framework_design")
@@ -90,8 +109,6 @@ def build_graph() -> StateGraph:
 
     # ── 终态 ──
     g.add_edge("final_spec", END)
-
-    return g
 
 
 def _wrap(fn):
@@ -127,5 +144,10 @@ def _approval_outcome_router(state: HarnessBuilderState) -> str:
 
 
 def compile_graph() -> StateGraph:
-    """Compile and return the executable graph."""
+    """Compile the full pipeline (requirement + architecture layers)."""
     return build_graph().compile()
+
+
+def compile_architecture_graph() -> StateGraph:
+    """Compile a graph that enters at framework_design (for --from-brief)."""
+    return build_architecture_graph().compile()

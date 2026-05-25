@@ -2,11 +2,15 @@
 
 Usage:
     python -m sinan.cli                       # full pipeline: design → coding
-    python -m sinan.cli --from-design <id>    # skip design layer, resume coding
+    python -m sinan.cli --from-brief <id>     # skip requirement layer; run
+                                              # architecture + coding from
+                                              # runs/<id>/user_brief_form.json
+    python -m sinan.cli --from-design <id>    # skip design layer; resume coding
                                               # from runs/<id>/harness_design_draft.json
 """
 from __future__ import annotations
 import argparse
+import json
 import uuid
 import sys
 from pathlib import Path
@@ -15,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sinan.state import make_initial_state
-from sinan.graph import compile_graph
+from sinan.graph import compile_graph, compile_architecture_graph
 from sinan.artifacts import (
     ensure_run_dir, get_run_dir, append_progress_log, append_decision_log,
     update_run_state,
@@ -29,10 +33,18 @@ from sinan.coding.mock_responses import register_coding_mock_responses
 
 def main():
     parser = argparse.ArgumentParser(description="司南 Harness Builder")
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--from-brief",
+        metavar="RUN_ID",
+        help="Skip requirement layer; run architecture + coding layers from "
+             "runs/<RUN_ID>/user_brief_form.json",
+    )
+    group.add_argument(
         "--from-design",
         metavar="RUN_ID",
-        help="Skip design layer; resume coding layer from runs/<RUN_ID>/harness_design_draft.json",
+        help="Skip design layer; resume coding layer from "
+             "runs/<RUN_ID>/harness_design_draft.json",
     )
     args = parser.parse_args()
 
@@ -53,9 +65,18 @@ def main():
             print("请先跑完整流程，或检查 run_id 是否正确。")
             sys.exit(1)
         print(f"从 run_id={run_id} 的设计稿恢复，跳过设计层。")
-        # Coding layer will read the draft from disk via planner's fallback.
-        # Pass empty dict; planner_node falls back to file read.
         _run_coding_layer(run_id, harness_draft={})
+        return
+
+    if args.from_brief:
+        run_id = args.from_brief
+        brief_path = get_run_dir(run_id) / "user_brief_form.json"
+        if not brief_path.exists():
+            print(f"找不到需求契约: {brief_path}")
+            print("请先跑过需求层一次，或检查 run_id 是否正确。")
+            sys.exit(1)
+        print(f"从 run_id={run_id} 的需求契约恢复，跳过需求层。")
+        _run_architecture_then_coding(run_id, brief_path)
         return
 
     # ── Full pipeline ──
@@ -105,6 +126,38 @@ def main():
         raise
 
     # ── Phase 2: Coding Layer ──
+    harness_draft = final_state.get("harness_design_draft") or {}
+    _run_coding_layer(run_id, harness_draft)
+
+
+def _run_architecture_then_coding(run_id: str, brief_path: Path) -> None:
+    """Skip the requirement layer; run architecture + coding from an existing brief."""
+    with open(brief_path, encoding="utf-8") as f:
+        brief = json.load(f)
+
+    state = make_initial_state(run_id)
+    state["user_brief_form"] = brief
+    state["current_phase"] = "BRIEF_COMPILE"
+    append_progress_log(run_id, "SYSTEM",
+        f"Resumed at architecture layer from {brief_path.name}")
+
+    print(f"开始重跑架构层 + 研发层...\n")
+
+    graph = compile_architecture_graph()
+    try:
+        final_state = graph.invoke(state)
+        print("\n" + "=" * 60)
+        print("司南：架构层完成")
+        print("=" * 60)
+    except Exception as e:
+        print(f"\n架构层异常: {e}")
+        append_decision_log(run_id, {
+            "phase": "SYSTEM",
+            "type": "error",
+            "content": f"Architecture pipeline failed: {str(e)}",
+        })
+        raise
+
     harness_draft = final_state.get("harness_design_draft") or {}
     _run_coding_layer(run_id, harness_draft)
 

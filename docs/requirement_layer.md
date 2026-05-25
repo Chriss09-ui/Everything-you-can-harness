@@ -50,7 +50,9 @@ spec_expansion → spec_challenge → brief_debate → sinan_debrief → brief_c
 - `state["user_raw_input"]` — 一段自然语言（由 `intake_node` 在 graph 启动前注入，见 `cli.py` 第 49 行）
 
 ### 出口
-- `runs/<run_id>/user_brief_form.json` — 需求契约（**架构层的唯一输入**）。该文件是自包含契约：既包含用户确认/拒绝/优先级等签字信息，也保留 `requirement_pack` 的核心需求字段（目标、范围、成功标准、约束等），下游不需要回读 `requirement_pack.json` 才能理解需求。
+- `runs/<run_id>/user_brief_form.json` — 需求契约（**架构层的输入**）。该文件是自包含契约：既包含用户确认/拒绝/优先级等签字信息，也保留 `requirement_pack` 的核心需求字段（目标、范围、成功标准、约束等），下游不需要回读 `requirement_pack.json` 才能理解需求。
+
+> 一旦落盘，架构层可以独立启动：`python -m sinan.cli --from-brief <run_id>` 跳过需求层，从这个文件 hydrate。
 
 ### 中间产物（按顺序生成）
 
