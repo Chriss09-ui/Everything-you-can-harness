@@ -166,7 +166,7 @@ def register_mock_responses() -> None:
                 "rejected_reason": "串行执行增加延迟，且后执行的子 agent 无法利用前面 agent 的洞察"
             }
         ],
-        "sub_agent_outputs": {
+        "subagent_outputs": {
             "framework": {
                 "nodes": ["intake", "spec_expansion", "spec_challenge", "brief_debate", "wait_brief", "brief_compile", "architecture_draft", "architecture_challenge", "approval_gate", "wait_approval", "final_spec"],
                 "edges": [["spec_expansion", "spec_challenge"], ["spec_challenge", "brief_debate"], ["brief_debate", "wait_brief"], ["wait_brief", "brief_compile"], ["brief_compile", "architecture_draft"], ["architecture_draft", "architecture_challenge"], ["architecture_challenge", "approval_gate"]],

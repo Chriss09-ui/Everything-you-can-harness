@@ -79,7 +79,7 @@ Eval Placements:
     arch = _parse_json(raw, "architecture_pack")
 
     # 加入完整上下文便于追溯
-    arch["sub_agent_outputs"] = subagent_outputs
+    arch["subagent_outputs"] = subagent_outputs
     arch["framework_design"] = framework
     arch["design_evolution"] = {
         "initial_framework": state.get("framework_design"),

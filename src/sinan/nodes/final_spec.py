@@ -44,8 +44,7 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     arch_pack = state.get("architecture_pack") or {}
     subagent_outputs = (
         state.get("subagent_outputs")
-        or arch_pack.get("sub_agent_outputs")
-        or state.get("sub_agent_outputs", {})
+        or arch_pack.get("subagent_outputs", {})
         or {}
     )
 
