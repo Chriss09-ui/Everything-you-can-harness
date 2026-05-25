@@ -9,6 +9,7 @@ Reads:
 
 Writes:
     state["subagent_reviews"]  — {memory, handoff, eval} review reports
+    state["subagent_outputs"]  — {memory, handoff, eval} detailed module designs
     state["current_phase"]      — "SUBAGENT_REVIEW"
     state["artifact_versions"]  — records subagent_reviews/outputs versions
 
@@ -76,6 +77,7 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
     write_json(state["run_id"], "subagent_outputs.json", subagent_outputs, versioned=True)
 
     state["subagent_reviews"] = reviews
+    state["subagent_outputs"] = subagent_outputs
     state["current_phase"] = "SUBAGENT_REVIEW"
     state["artifact_versions"]["subagent_reviews"] = "1.0"
     state["artifact_versions"]["subagent_outputs"] = "1.0"

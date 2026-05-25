@@ -74,8 +74,8 @@ def register_mock_responses() -> None:
         "recommendation": "clarify_then_pass"
     }, ensure_ascii=False))
 
-    # 契约 (Brief Compiler) — triggered by "User Brief Form"
-    MockLLMClient.register("User Brief Form", json.dumps({
+    # 契约 (Brief Compiler)
+    MockLLMClient.register("生成最终 User Brief Form", json.dumps({
         "confirmed_requirements": [
             "需求分析与扩展功能",
             "需求审查与质疑功能",
@@ -99,8 +99,8 @@ def register_mock_responses() -> None:
         "brief_version": "1.0"
     }, ensure_ascii=False))
 
-    # 总工整合 (Architect) — triggered by "整合以上所有子专家"
-    MockLLMClient.register("整合以上所有子专家", json.dumps({
+    # 总工整合 (Architect)
+    MockLLMClient.register("请整合以上所有输出，生成完整的 Harness 架构包", json.dumps({
         "graph_description": "线性状态机: INTAKE → SPEC_EXPANSION → SPEC_CHALLENGE → BRIEF_DEBATE → WAIT_BRIEF → BRIEF_COMPILE → ARCHITECTURE_DRAFT → ARCHITECTURE_CHALLENGE → APPROVAL_GATE → FINAL_SPEC。需求层固定串行，架构层含条件分支。",
         "state_schema_summary": {
             "run_id": "str",
@@ -130,6 +130,29 @@ def register_mock_responses() -> None:
             "WAIT_APPROVAL",
             "FINAL_SPEC"
         ],
+        "memory_module": {
+            "working_memory": "当前任务上下文存储在 state 中，每个节点通过 state dict 传递",
+            "project_memory": "所有 artifact 写入 runs/{run_id}/ 目录，作为项目级持久化",
+            "long_term_memory": "V1 暂不实现，通过用户审批时的上下文继承实现信息复用",
+            "memory_handoffs": "每个节点退出时，书记写入磁盘；下一节点读取磁盘+state",
+            "storage_backends": "文件系统（JSON/YAML/MD），无数据库依赖",
+            "retention_policy": "runs/ 目录保留最近 10 次运行，旧运行可手动清理"
+        },
+        "handoff_protocol": {
+            "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→sinan_debrief", "brief_compile→framework_design", "final_spec→planner"],
+            "context_included": ["requirement_pack", "spec_review", "brief_debate", "user_brief_form", "architecture_pack", "architecture_review", "harness_design_draft"],
+            "state_transfer": "热路径通过 LangGraph state，持久边界通过 runs/{run_id}/ 下的 JSON artifact",
+            "error_recovery": "节点失败时保留已写 artifact，允许从设计稿恢复研发层",
+            "versioning": "可迭代 artifact 使用 versioned JSON 写入"
+        },
+        "eval_placements": {
+            "eval_triggers": ["spec_challenge 完成时", "architecture_challenge 完成时", "用户审批前", "研发层 QA 时"],
+            "eval_criteria": ["需求完整性", "架构合理性", "风险可接受性", "实现可运行性"],
+            "eval_frequency": "每个 Gate 点各评估一次",
+            "eval_outputs": "challenge_score / risk_level / evaluator_grade",
+            "quality_gates": "低风险自动通过，高风险进入用户审批",
+            "user_notification": "当 risk_level != low 时通知用户"
+        },
         "approval_gates": ["WAIT_BRIEF", "APPROVAL_GATE"],
         "failure_recovery": "架构拒绝最多 2 次，超过后强制停止并输出已有产物。LLM 调用有超时保护和重试机制。",
         "risks_identified": [
@@ -178,16 +201,35 @@ def register_mock_responses() -> None:
     }, ensure_ascii=False))
 
     # 框架设计师子 agent
-    MockLLMClient.register("zonggong_framework", json.dumps({
-        "nodes": ["intake", "spec_expansion", "spec_challenge", "brief_debate", "wait_brief", "brief_compile", "architecture_draft", "architecture_challenge", "approval_gate", "wait_approval", "final_spec"],
-        "edges": [["spec_expansion", "spec_challenge"], ["spec_challenge", "brief_debate"], ["brief_debate", "wait_brief"], ["wait_brief", "brief_compile"], ["brief_compile", "architecture_draft"], ["architecture_draft", "architecture_challenge"], ["architecture_challenge", "approval_gate"]],
-        "conditional_edges": [["approval_gate", "wait_approval"], ["approval_gate", "final_spec"], ["wait_approval", "architecture_draft"], ["wait_approval", "final_spec"]],
+    MockLLMClient.register("【第一轮】请设计 harness 的整体框架结构", json.dumps({
+        "nodes": [
+            {"name": "spec_expansion", "role": "扩展需求"},
+            {"name": "spec_challenge", "role": "质疑需求"},
+            {"name": "brief_compile", "role": "定稿需求契约"},
+            {"name": "framework_design", "role": "设计 harness 框架"},
+            {"name": "architecture_challenge", "role": "逆审架构"},
+            {"name": "approval_gate", "role": "风险分级"},
+            {"name": "final_spec", "role": "编译研发层设计稿"}
+        ],
+        "edges": [
+            {"from": "spec_expansion", "to": "spec_challenge"},
+            {"from": "spec_challenge", "to": "brief_debate"},
+            {"from": "brief_compile", "to": "framework_design"},
+            {"from": "framework_design", "to": "architecture_challenge"},
+            {"from": "architecture_challenge", "to": "approval_gate"}
+        ],
+        "conditional_edges": [
+            {"condition": "risk_level == low", "routes": "approval_gate -> final_spec"},
+            {"condition": "risk_level != low", "routes": "approval_gate -> sinan_approval"}
+        ],
+        "phase_sequence": ["需求契约", "架构设计", "架构逆审", "风险审批", "最终设计稿"],
         "entry_point": "spec_expansion",
-        "end_state": "FINAL_SPEC"
+        "end_state": "FINAL_SPEC",
+        "design_rationale": "先把需求固化为文件契约，再让架构层和研发层只消费明确 artifact。"
     }, ensure_ascii=False))
 
     # 记忆模块设计师子 agent
-    MockLLMClient.register("zonggong_memory", json.dumps({
+    MockLLMClient.register("你是记忆模块设计师", json.dumps({
         "working_memory": "当前任务上下文存储在 state 中，每个节点通过 state dict 传递",
         "project_memory": "所有 artifact 写入 runs/{run_id}/ 目录，作为项目级持久化",
         "long_term_memory": "V1 暂不实现，通过用户审批时的上下文继承实现信息复用",
@@ -197,7 +239,7 @@ def register_mock_responses() -> None:
     }, ensure_ascii=False))
 
     # 交接协议设计师子 agent
-    MockLLMClient.register("zonggong_handoff", json.dumps({
+    MockLLMClient.register("你是交接协议设计师", json.dumps({
         "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→wait_brief", "brief_compile→architecture_draft", "architecture_draft→architecture_challenge", "architecture_challenge→approval_gate"],
         "context_included": ["requirement_pack", "spec_review", "brief_debate", "user_brief_form", "architecture_pack", "architecture_review"],
         "state_transfer": "通过 LangGraph state dict 传递，节点返回更新后的 state dict",
@@ -206,13 +248,28 @@ def register_mock_responses() -> None:
     }, ensure_ascii=False))
 
     # 评估专家子 agent
-    MockLLMClient.register("zonggong_eval", json.dumps({
+    MockLLMClient.register("你是评估专家", json.dumps({
         "eval_triggers": ["spec_challenge 完成时", "architecture_challenge 完成时", "用户审批前"],
         "eval_criteria": ["需求完整性", "架构合理性", "风险可接受性"],
         "eval_frequency": "每个 Gate 点各评估一次",
         "eval_outputs": "challenge_score (0-10) + recommendation",
         "quality_gates": "challenge_score <= 3 为通过，否则需要人工介入",
         "user_notification": "当 challenge_score > 3 时通知用户"
+    }, ensure_ascii=False))
+
+    # 子代理评审报告 — all three review calls can share this shape in mock mode.
+    MockLLMClient.register("评审当前 framework 设计", json.dumps({
+        "agent_name": "mock_reviewer",
+        "agent_role": "子代理评审者",
+        "incompatibilities": [],
+        "missing_elements": [],
+        "endorsed_elements": [
+            {
+                "element": "artifact-based handoff",
+                "reason": "跨节点交接有可审计的文件边界"
+            }
+        ],
+        "summary": "当前 framework 与模块设计兼容"
     }, ensure_ascii=False))
 
     # 逆审 (Architecture Challenger) — triggered by "批判性审查以上架构"

@@ -17,7 +17,7 @@
 | sinan_debrief | — (state only: user_brief_answers) | brief_compile |
 | brief_compile | `user_brief_form.json` | framework_design |
 | framework_design | `framework_design.json` | subagent_review, framework_adjust |
-| subagent_review | `subagent_reviews.json` | framework_adjust |
+| subagent_review | `subagent_reviews.json`, `subagent_outputs.json` | framework_adjust, zonggong_integrate, final_spec |
 | framework_adjust | `framework_adjustment.json` | zonggong_integrate |
 | zonggong_integrate | `architecture_pack.json` | architecture_challenge, approval_gate, final_spec |
 | architecture_challenge | `architecture_review.json` | approval_gate |
@@ -117,7 +117,7 @@ Routes:
 | Layer | 需求层 (出口) |
 | Reads | `requirement_pack`, `brief_debate`, `user_brief_answers` |
 | Writes | `user_brief_form`, `current_phase`, `artifact_versions` |
-| Artifacts | `user_brief_form.json` — 需求契约，架构层入口 |
+| Artifacts | `user_brief_form.json` — 自包含需求契约，包含确认信息 + 需求包核心字段，架构层入口 |
 | Routes | → `framework_design` (linear, 进入架构层) |
 
 > **层间交接点：** `user_brief_form.json` 是需求层→架构层的唯一交接物。
@@ -144,8 +144,8 @@ Routes:
 | Agent | 子代理 (Memory / Handoff / Eval) |
 | Layer | 架构层 (四步辩论 Step 2) |
 | Reads | `framework_design` |
-| Writes | `subagent_reviews`, `current_phase`, `artifact_versions` |
-| Artifacts | `subagent_reviews.json` |
+| Writes | `subagent_reviews`, `subagent_outputs`, `current_phase`, `artifact_versions` |
+| Artifacts | `subagent_reviews.json`, `subagent_outputs.json` |
 | Routes | → `framework_adjust` (linear) |
 
 ### 8. framework_adjust

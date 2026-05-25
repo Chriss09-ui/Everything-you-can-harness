@@ -8,6 +8,7 @@ Reads:
     state["user_brief_form"]   — from brief_compile
     state["framework_design"]  — adjusted framework
     state["subagent_reviews"]  — sub-agent review reports
+    state["subagent_outputs"]  — sub-agent detailed module designs
 
 Writes:
     state["harness_design_draft"] — final AI-facing design dict
@@ -37,13 +38,16 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
 
     brief = state.get("user_brief_form") or state.get("requirement_pack") or {}
     framework = state.get("framework_design") or {}
-    subagent_outputs = state.get("sub_agent_outputs", {})
-    if not subagent_outputs:
-        subagent_outputs = state.get("subagent_reviews", {})
     reviews = state.get("subagent_reviews", {})
     adjustments = state.get("framework_adjustments", {})
     arch_review = state.get("architecture_review") or {}
     arch_pack = state.get("architecture_pack") or {}
+    subagent_outputs = (
+        state.get("subagent_outputs")
+        or arch_pack.get("sub_agent_outputs")
+        or state.get("sub_agent_outputs", {})
+        or {}
+    )
 
     draft = _build_ai_draft(
         state, brief, framework, subagent_outputs,
@@ -123,11 +127,11 @@ def _build_ai_draft(
         "use_case": brief.get("use_case_summary", brief.get("primary_goal", "未定义")),
         "primary_goal": brief.get("primary_goal", "未定义"),
         "scope": {
-            "inclusions": brief.get("scope_inclusions", []),
-            "exclusions": brief.get("scope_exclusions", []),
+            "inclusions": brief.get("scope_inclusions", brief.get("confirmed_requirements", [])),
+            "exclusions": brief.get("scope_exclusions", brief.get("rejected_suggestions", [])),
         },
         "success_criteria": brief.get("success_criteria", []),
-        "constraints": brief.get("known_constraints", []),
+        "constraints": brief.get("known_constraints", brief.get("constraints_final", [])),
         "assumptions": brief.get("assumptions", []),
         "stakeholders": brief.get("stakeholders", []),
         "persona_qualities": brief.get("persona_qualities", []),

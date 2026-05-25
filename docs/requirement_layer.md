@@ -50,7 +50,7 @@ spec_expansion → spec_challenge → brief_debate → sinan_debrief → brief_c
 - `state["user_raw_input"]` — 一段自然语言（由 `intake_node` 在 graph 启动前注入，见 `cli.py` 第 49 行）
 
 ### 出口
-- `runs/<run_id>/user_brief_form.json` — 需求契约（**架构层的唯一输入**）
+- `runs/<run_id>/user_brief_form.json` — 需求契约（**架构层的唯一输入**）。该文件是自包含契约：既包含用户确认/拒绝/优先级等签字信息，也保留 `requirement_pack` 的核心需求字段（目标、范围、成功标准、约束等），下游不需要回读 `requirement_pack.json` 才能理解需求。
 
 ### 中间产物（按顺序生成）
 
@@ -59,7 +59,7 @@ spec_expansion → spec_challenge → brief_debate → sinan_debrief → brief_c
 | `requirement_pack.json` | `spec_expansion` | 结构化需求包 |
 | `spec_review.json` | `spec_challenge` | 诘问报告，含未解决风险 |
 | `brief_debate.json` | `brief_debate` | 辩论结果，含 agreements / unresolved |
-| `user_brief_form.json` | `brief_compile` | **契约文件** — 出口 |
+| `user_brief_form.json` | `brief_compile` | **契约文件** — 出口；包含确认信息 + 需求包核心字段 |
 
 所有文件落到 `runs/<run_id>/`。
 
@@ -76,7 +76,7 @@ spec_expansion → spec_challenge → brief_debate → sinan_debrief → brief_c
 | `spec_review` | dict | `spec_challenge` | `brief_debate` |
 | `brief_debate` | dict | `brief_debate` | `sinan_debrief`, `brief_compile` |
 | `user_brief_answers` | list[dict] | `sinan_debrief` | `brief_compile` |
-| `user_brief_form` | dict | `brief_compile` | 架构层 `framework_design` |
+| `user_brief_form` | dict | `brief_compile` | 架构层 `framework_design`；自包含需求契约 |
 | `current_phase` | str | 每个 node | 审计 / 日志 |
 | `risk_register` | list[dict] | `spec_challenge` | 跨层风险跟踪 |
 | `artifact_versions` | dict | 每个写产物的 node | 版本注册表 |

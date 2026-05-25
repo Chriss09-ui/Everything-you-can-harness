@@ -31,6 +31,20 @@ from ..artifacts import (
 from ..validation import parse_and_validate_artifact
 
 
+_REQUIREMENT_CONTRACT_FIELDS = (
+    "use_case_summary",
+    "primary_goal",
+    "stakeholders",
+    "scope_inclusions",
+    "scope_exclusions",
+    "success_criteria",
+    "assumptions",
+    "known_constraints",
+    "persona_qualities",
+    "risk_tolerance",
+)
+
+
 def brief_compile_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "BRIEF_COMPILE")
     append_progress_log(state["run_id"], "BRIEF_COMPILE", "Compiling user brief form")
@@ -72,6 +86,7 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
 
     raw = client.generate(system, user)
     brief = parse_and_validate_artifact(raw, "user_brief_form")
+    brief = _enrich_user_brief_form(brief, rp)
 
     write_json(state["run_id"], "user_brief_form.json", brief)
     state["user_brief_form"] = brief
@@ -88,3 +103,12 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
     finalize_phase(state["run_id"])
 
     return state
+
+
+def _enrich_user_brief_form(brief: dict, requirement_pack: dict) -> dict:
+    """Make the requirement-layer exit artifact self-contained."""
+    enriched = dict(brief)
+    for field in _REQUIREMENT_CONTRACT_FIELDS:
+        if field not in enriched and field in requirement_pack:
+            enriched[field] = requirement_pack[field]
+    return enriched

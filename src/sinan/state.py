@@ -9,8 +9,12 @@ class GateFlags(TypedDict, total=False):
     architecture_passed: bool
     needs_user_brief: bool
     needs_user_approval: bool
+    risk_level: str
     flagged_risks: list[str]
     arch_reject_count: int
+    shoumen_reasoning: str
+    key_concerns: list[str]
+    checklist: dict
 
 
 class HarnessBuilderState(TypedDict):
@@ -37,6 +41,7 @@ class HarnessBuilderState(TypedDict):
     # ── Framework Debate (Architecture Layer) ──
     framework_design: Optional[dict]           # Round 1: Framework 初始输出
     subagent_reviews: Optional[dict]           # Round 2: 子代理评审报告
+    subagent_outputs: Optional[dict]           # Round 2: 子代理详细模块设计
     framework_adjustments: Optional[dict]      # Round 3: Framework 调整记录
 
     # ── Gatekeeping ──
@@ -80,6 +85,7 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
         harness_design_draft=None,
         framework_design=None,
         subagent_reviews=None,
+        subagent_outputs=None,
         framework_adjustments=None,
         gate_flags=GateFlags(
             challenge_passed=False,

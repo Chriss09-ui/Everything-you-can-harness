@@ -79,7 +79,7 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 ## 4. 输入 / 输出契约
 
 ### 入口
-- `runs/<run_id>/user_brief_form.json` — 需求层产出的需求契约
+- `runs/<run_id>/user_brief_form.json` — 需求层产出的自包含需求契约。它包含用户确认/拒绝/优先级信息，并保留目标、范围、成功标准、约束等需求包核心字段。
 - （如果是 revision 轮次）`runs/<run_id>/arch_revision_brief.json` — 上一轮 reject 的修订简报
 
 ### 出口
@@ -95,6 +95,7 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 |---|---|---|
 | `framework_design.json` | `framework_design` | 总工初稿 |
 | `subagent_reviews.json` | `subagent_review` | Memory / Handoff / Eval 三方评审 |
+| `subagent_outputs.json` | `subagent_review` | Memory / Handoff / Eval 三方详细模块设计 |
 | `framework_adjustment.json` | `framework_adjust` | 总工调整记录 |
 | `architecture_pack.json` | `zonggong_integrate` | 综合后的架构包 |
 | `architecture_review.json` | `architecture_challenge` | 逆审报告 |
@@ -141,6 +142,7 @@ approval == "reject" / "request_changes"
 | `user_brief_form` | dict | 需求层 `brief_compile` | `framework_design`, `final_spec` |
 | `framework_design` | dict | `framework_design` | `subagent_review`, `framework_adjust`, `zonggong_integrate` |
 | `subagent_reviews` | dict | `subagent_review` | `framework_adjust`, `zonggong_integrate` |
+| `subagent_outputs` | dict | `subagent_review` | `zonggong_integrate`, `final_spec` |
 | `framework_adjustments` | dict | `framework_adjust` | `zonggong_integrate` |
 | `architecture_pack` | dict | `zonggong_integrate` | `architecture_challenge`, `approval_gate`, `sinan_approval`, `final_spec` |
 | `architecture_review` | dict | `architecture_challenge` | `approval_gate`, `sinan_approval`, `arch_revise` |

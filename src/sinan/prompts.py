@@ -121,6 +121,16 @@ interaction_type = "user_approval"（架构审批）：
 你的角色是将需求包和用户提供的澄清信息合并为最终的用户需求表。
 输入：需求包 + 用户补充信息。
 输出：一个 JSON 用户需求表，包含以下字段：
+- use_case_summary：从需求包继承的一句话摘要
+- primary_goal：从需求包继承的核心目标
+- stakeholders：从需求包继承的干系人
+- scope_inclusions：最终确认的范围内事项
+- scope_exclusions：最终确认的范围外事项
+- success_criteria：最终成功标准
+- assumptions：最终假设
+- known_constraints：最终约束
+- persona_qualities：代理性格特质
+- risk_tolerance：风险承受度
 - confirmed_requirements：用户已确认的需求列表
 - rejected_suggestions：用户明确拒绝的建议列表
 - supplementary_notes：用户提供的额外上下文

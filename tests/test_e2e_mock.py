@@ -42,6 +42,15 @@ def test_full_pipeline_mock(monkeypatch):
     assert final["harness_design_draft"] is not None
     assert final["current_phase"] == "FINAL_SPEC"
 
+    draft = final["harness_design_draft"]
+    assert draft["primary_goal"] != "未定义"
+    assert draft["scope"]["inclusions"]
+    assert draft["success_criteria"]
+    assert draft["constraints"]
+    assert draft["memory_module"].get("working_memory")
+    assert draft["handoff_protocol"].get("handoff_points")
+    assert draft["eval_placements"].get("eval_triggers")
+
     # Verify files on disk
     run_dir = get_run_dir(run_id)
     assert (run_dir / "requirement_pack.json").exists()
