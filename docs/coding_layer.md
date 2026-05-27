@@ -1,6 +1,6 @@
 # 研发层 (Coding Layer) — AI 上手指南
 
-> 给接手"研发层"开发的 AI 的第一份必读。研发层是三层里**最复杂**的一层（27 个 node、6 个条件路由、4 重嵌套循环、并行 fan-out/fan-in），读完这一份再去查代码就不会迷路。
+> 给接手"研发层"开发的 AI 的第一份必读。研发层是三层里**最复杂**的一层（26 个 node、6 个条件路由、4 重嵌套循环、并行 fan-out/fan-in），读完这一份再去查代码就不会迷路。
 >
 > 改完代码记得回到 [CLAUDE.md](../CLAUDE.md#改动同步原则强制) 查改动同步清单。
 
@@ -98,13 +98,13 @@
                                                                                   evaluator_qa  generator_fix
 ```
 
-代码定义见 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py)（27 nodes + 6 routers + 2 fan-out routers via `Send`）。
+代码定义见 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py)（26 nodes + 6 routers + 2 fan-out routers via `Send`）。
 
 ---
 
 ## 4. 节点清单（与 [NODES.md](../src/sinan/coding/NODES.md) 同步）
 
-完整 27 个 node 的 Reads / Writes / Artifacts / Routes 在 [src/sinan/coding/NODES.md](../src/sinan/coding/NODES.md)。下表只列**角色 + 一句话职责**，便于速查：
+完整 26 个 node 的 Reads / Writes / Artifacts / Routes 在 [src/sinan/coding/NODES.md](../src/sinan/coding/NODES.md)。下表只列**角色 + 一句话职责**，便于速查：
 
 | # | Node | Agent | Loop | 一句话 |
 |---|---|---|---|---|
@@ -237,9 +237,9 @@
 
 | 文件 | 用途 |
 |---|---|
-| [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) | 27 个 node 注册 + 6 router + 2 fan-out |
+| [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) | 26 个 node 注册 + 6 router + 2 fan-out |
 | [src/sinan/coding/state.py](../src/sinan/coding/state.py) | `CodingState` + `make_coding_state()` |
-| [src/sinan/coding/nodes/](../src/sinan/coding/nodes/) | 27 个 node 模块 |
+| [src/sinan/coding/nodes/](../src/sinan/coding/nodes/) | 26 个 node 模块 |
 | [src/sinan/coding/prompts.py](../src/sinan/coding/prompts.py) | Planner / Generator / Evaluator / Initializer / Negotiator prompts |
 | [src/sinan/coding/git.py](../src/sinan/coding/git.py) | `git init / add / commit / log / revert` 封装 |
 | [src/sinan/coding/testing.py](../src/sinan/coding/testing.py) | **Runner**：subprocess + 60s timeout 跑 `harness/main.py`，对照 design_draft.test_cases 评分 |
