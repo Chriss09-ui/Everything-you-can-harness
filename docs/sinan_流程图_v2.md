@@ -434,7 +434,7 @@ JSON 解析容错（parse_and_validate_artifact，全流程共用）：
    - 总工整合时可看到完整的 design_evolution
 
 5. 产物增强
-   - final_spec 输出增加 artifact_version_summary（版本历史表）
+   - final_spec 生成 harness_design_final.md 时附带「Artifact 版本历史」段（write_json 之后再读取，包含本次写入版本）
    - framework_design 带版本号（v1 / v2+）
    - architecture_pack 保留完整 design_evolution（初始方案→评审→调整→整合）
    - user_brief_answers 增加回答状态（answered/skipped）和时间戳

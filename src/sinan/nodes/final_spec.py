@@ -99,7 +99,11 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     state["current_phase"] = "FINAL_SPEC"
     state["artifact_versions"]["harness_design_draft"] = "1.0"
 
-    md = _render_markdown(draft, state)
+    # Summary is read AFTER write_json so the draft's own freshly-registered
+    # version shows up in the rendered md. Embedding it inside the JSON draft
+    # would necessarily be one version stale (computed before its own write).
+    version_summary = get_artifact_summary(state["run_id"])
+    md = _render_markdown(draft, state, version_summary)
     write_md(state["run_id"], "harness_design_final.md", md)
 
     append_progress_log(state["run_id"], "FINAL_SPEC", "Design draft compiled and saved (pending user approval)")
@@ -272,9 +276,9 @@ def _build_ai_draft(
         # ── Risks ──
         "risks_identified": arch_pack.get("risks_identified", []),
         "alternative_options": arch_pack.get("alternative_options", []),
-
-        # ── Metadata ──
-        "artifact_version_summary": get_artifact_summary(state["run_id"]),
+        # NOTE: artifact_version_summary is intentionally NOT embedded here.
+        # It is rendered into the md AFTER write_json runs (see final_spec_node),
+        # so the current draft's own version is visible in the rendered output.
     }
 
 
@@ -334,7 +338,11 @@ def _type_to_string(typ) -> str:
     return getattr(typ, "__name__", str(typ)).split(".")[-1]
 
 
-def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
+def _render_markdown(
+    draft: dict,
+    state: HarnessBuilderState,
+    version_summary: dict | None = None,
+) -> str:
     lines = [
         f"# 司南 Harness 设计稿 v{draft['version']}",
         "",
@@ -576,7 +584,7 @@ def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
         "",
         "## 八、Artifact 版本历史",
     ]
-    version_summary = draft.get("artifact_version_summary", {})
+    version_summary = version_summary or {}
     if version_summary:
         for artifact, info in version_summary.items():
             versions = info.get("versions", [])
