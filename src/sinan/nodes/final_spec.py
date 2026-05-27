@@ -41,26 +41,48 @@ from ..artifacts import (
 from ..validation import validate_artifact
 
 
+def _require(state: HarnessBuilderState, key: str, producer: str, filename: str | None = None) -> dict:
+    """Read a required upstream artifact; raise if missing.
+
+    final_spec used to silently fall back to ``{}`` for missing inputs, which
+    produced a schema-valid but content-empty draft that the coding layer then
+    ran with as if it were real. This helper makes the dependency explicit.
+
+    Args:
+        state: workflow state dict (must contain ``run_id``).
+        key: state field name and (by default) disk filename stem.
+        producer: name of the upstream node responsible for producing this
+            artifact, included in the error message to point at the fix.
+        filename: optional override for disk filename (default: ``<key>.json``).
+    """
+    value = load_state_or_file(state, key, filename=filename)
+    if not value:
+        run_id = state.get("run_id", "<unknown>")
+        fname = filename or f"{key}.json"
+        raise RuntimeError(
+            f"final_spec requires {key} but it is missing in both state and "
+            f"on disk (runs/{run_id}/{fname}). Producer: {producer}. "
+            f"Run the architecture layer from the start, or use --from-brief "
+            f"with a complete run."
+        )
+    return value
+
+
 def final_spec_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "FINAL_SPEC")
     append_progress_log(state["run_id"], "FINAL_SPEC", "Compiling final design draft")
 
-    brief = load_state_or_file(state, "user_brief_form")
-    if not brief:
-        raise RuntimeError(
-            "final_spec requires user_brief_form on disk or in state. "
-            "It is the requirement→architecture handoff and brief_compile "
-            "is responsible for producing it (enriched with requirement_pack)."
-        )
-    framework = load_state_or_file(state, "framework_design")
-    reviews = load_state_or_file(state, "subagent_reviews")
-    adjustments = load_state_or_file(state, "framework_adjustments", filename="framework_adjustment.json")
-    arch_review = load_state_or_file(state, "architecture_review")
-    arch_pack = load_state_or_file(state, "architecture_pack")
-    subagent_outputs = (
-        load_state_or_file(state, "subagent_outputs")
-        or arch_pack.get("subagent_outputs", {})
-        or {}
+    # All architecture-debate artifacts are required. We fail fast on missing
+    # upstream rather than silently producing an empty draft. The only optional
+    # field is framework_adjustments (only present after a reject round).
+    brief = _require(state, "user_brief_form", "brief_compile")
+    framework = _require(state, "framework_design", "framework_design")
+    reviews = _require(state, "subagent_reviews", "subagent_review")
+    arch_review = _require(state, "architecture_review", "architecture_challenge")
+    arch_pack = _require(state, "architecture_pack", "zonggong_integrate")
+    subagent_outputs = _require(state, "subagent_outputs", "subagent_review")
+    adjustments = load_state_or_file(
+        state, "framework_adjustments", filename="framework_adjustment.json"
     )
 
     draft = _build_ai_draft(
