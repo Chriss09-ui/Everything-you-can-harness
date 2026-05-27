@@ -56,12 +56,16 @@ class TestCaseResult:
 
 @dataclass
 class QAGrade:
-    functionality: int      # 1-10
-    product_depth: int      # 1-10
-    visual_quality: int     # 1-10 (readability & structure, code-as-text)
-    code_quality: int       # 1-10
+    """Runner's verdict on the test_cases suite.
+
+    Soft scores (functionality/product_depth/visual_quality/code_quality) live
+    on the LLM evaluator's grade dict, not here — the runner only has hard
+    data: pass count and pass ratio. Earlier versions stuffed hardcoded 5s
+    into a 4-dim score that downstream then ignored; that dead data is gone.
+    """
     overall_pass: bool
     summary: str
+    functional_ratio: float = 0.0  # hard_pass_count / total — 0 when skipped
     runner_results: list[dict] = field(default_factory=list)  # per-case details
 
 
@@ -162,10 +166,8 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
     harness_dir = _harness_dir(run_id)
     if not harness_dir.exists():
         return QAGrade(
-            functionality=0, product_depth=0, visual_quality=0, code_quality=0,
             overall_pass=True,
             summary="Harness dir not found — runner skipped, deferring to LLM",
-            runner_results=[],
         )
 
     main_py = harness_dir / "main.py"
@@ -173,19 +175,15 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
         # No entrypoint — runner cannot run. Don't force a fail; let LLM
         # grade (executor_qa can still pass if generator is making progress).
         return QAGrade(
-            functionality=0, product_depth=0, visual_quality=0, code_quality=0,
             overall_pass=True,
             summary="main.py entrypoint missing — runner skipped, deferring to LLM",
-            runner_results=[],
         )
 
     test_cases = _load_test_cases(run_id)
     if not test_cases:
         return QAGrade(
-            functionality=0, product_depth=0, visual_quality=0, code_quality=0,
             overall_pass=True,
             summary="(no test_cases in design draft — runner skipped, deferring to LLM evaluator)",
-            runner_results=[],
         )
 
     # If every case is a placeholder (expected_to_pass=False), the runner
@@ -195,10 +193,8 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
     real_cases = [tc for tc in test_cases if tc.get("expected_to_pass", True)]
     if not real_cases:
         return QAGrade(
-            functionality=0, product_depth=0, visual_quality=0, code_quality=0,
             overall_pass=True,
             summary="(all test_cases are placeholders — runner skipped, deferring to LLM evaluator)",
-            runner_results=[],
         )
 
     # Run each test case
@@ -220,17 +216,9 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
     total = len(test_cases)
     fail_count = total - hard_pass_count - soft_pass_count
 
-    # Score: hard_pass drives functionality. Soft passes count as "good" too but
-    # separate so the downstream LLM evaluator can see the breakdown.
-    if total > 0:
-        functional_ratio = hard_pass_count / total
-    else:
-        functional_ratio = 0.0
-    func_score = int(functional_ratio * 10)
-    # Soft scores held at a neutral baseline; LLM evaluator grades these.
-    prod_score = 5
-    vis_score = 5
-    code_score = 5
+    # Hard data only: pass ratio. Anything subjective (product depth, visual
+    # quality, code quality) belongs to the LLM evaluator.
+    functional_ratio = hard_pass_count / total if total > 0 else 0.0
     # overall_pass: every expected_to_pass case must actually pass.
     overall_pass = fail_count == 0 and hard_pass_count >= 1
 
@@ -241,12 +229,9 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
     append_progress_log(run_id, "EVALUATOR_QA", f"run_qa_eval: {summary}")
 
     return QAGrade(
-        functionality=func_score,
-        product_depth=prod_score,
-        visual_quality=vis_score,
-        code_quality=code_score,
         overall_pass=overall_pass,
         summary=summary,
+        functional_ratio=functional_ratio,
         runner_results=runner_results,
     )
 
