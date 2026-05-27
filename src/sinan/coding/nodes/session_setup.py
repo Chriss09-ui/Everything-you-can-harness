@@ -62,18 +62,25 @@ def session_setup_exit_node(state: CodingState) -> dict:
     init_sh = harness_dir / "init.sh"
     if init_sh.exists():
         try:
+            # check=True so a non-zero exit raises CalledProcessError and
+            # lands in the except branch below — without it, init.sh
+            # failures silently log "executed successfully".
             subprocess.run(
                 ["bash", str(init_sh)],
                 cwd=harness_dir,
                 capture_output=True,
                 text=True,
                 timeout=60,
+                check=True,
             )
             append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
                 "init.sh executed successfully")
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        except subprocess.TimeoutExpired as e:
             append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
-                f"init.sh warning: {e}")
+                f"init.sh timeout after 60s: {e}")
+        except subprocess.CalledProcessError as e:
+            append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
+                f"init.sh exit {e.returncode}: {e.stderr[:200] if e.stderr else ''}")
 
     state["current_phase"] = "SESSION_SETUP_EXIT"
     append_decision_log(state["run_id"], {
