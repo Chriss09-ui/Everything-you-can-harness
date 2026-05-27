@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 from dotenv import load_dotenv
@@ -38,6 +39,34 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _log = logging.getLogger(__name__)
+
+
+# Total attempts (including the first call). Tunable for tests via monkeypatch.
+_MAX_ATTEMPTS = 3
+# Base delay seconds for exponential backoff: sleep = _BACKOFF_BASE * 2**(attempt-1).
+# Default schedule: 0.5s, 1.0s between attempts 1→2, 2→3.
+_BACKOFF_BASE = 0.5
+# Exception class names that should NOT be retried (4xx that means "your
+# request is wrong", not transient). 429 RateLimitError IS retryable, so it
+# is intentionally absent.
+_NON_RETRYABLE_EXC_NAMES = frozenset({
+    "BadRequestError",
+    "AuthenticationError",
+    "PermissionDeniedError",
+    "NotFoundError",
+    "UnprocessableEntityError",
+})
+
+
+def _should_retry(exc: Exception) -> bool:
+    """Decide whether to retry a failed LLM call.
+
+    Both openai and anthropic SDKs raise subclasses with names like
+    ``BadRequestError`` and ``RateLimitError``. We match by class name so we
+    don't have to import either SDK at module load. 429 / 5xx fall through to
+    "retry"; explicit 4xx-request-shape errors don't.
+    """
+    return type(exc).__name__ not in _NON_RETRYABLE_EXC_NAMES
 
 
 class LLMClient(ABC):
@@ -153,10 +182,11 @@ class _OpenAIClient(LLMClient):
             _log.info("OpenAI-compatible provider: base_url=%s model=%s", base_url, self.model)
 
     def generate(self, system: str, user: str) -> str:
-        # Retry once on transient errors (network, rate limit, empty response).
-        # Persistent failures still surface so the node can fail fast.
+        # Retry with exponential backoff on transient errors (network, 429,
+        # 5xx, empty response). 4xx request-shape errors are NOT retried —
+        # the next attempt would fail the same way and we'd just burn quota.
         last_err: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -176,8 +206,13 @@ class _OpenAIClient(LLMClient):
             except Exception as exc:
                 last_err = exc
                 _log.warning("OpenAI attempt %d failed: %s: %s",
-                             attempt + 1, type(exc).__name__, exc)
-        # Both attempts failed — propagate so the caller's error path runs.
+                             attempt, type(exc).__name__, exc)
+                if not _should_retry(exc):
+                    _log.warning("OpenAI error %s is non-retryable; failing immediately",
+                                 type(exc).__name__)
+                    break
+                if attempt < _MAX_ATTEMPTS:
+                    time.sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
         assert last_err is not None
         raise last_err
 
@@ -190,7 +225,7 @@ class _AnthropicClient(LLMClient):
 
     def generate(self, system: str, user: str) -> str:
         last_err: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
                 response = self.client.messages.create(
                     model=self.model,
@@ -204,6 +239,12 @@ class _AnthropicClient(LLMClient):
             except Exception as exc:
                 last_err = exc
                 _log.warning("Anthropic attempt %d failed: %s: %s",
-                             attempt + 1, type(exc).__name__, exc)
+                             attempt, type(exc).__name__, exc)
+                if not _should_retry(exc):
+                    _log.warning("Anthropic error %s is non-retryable; failing immediately",
+                                 type(exc).__name__)
+                    break
+                if attempt < _MAX_ATTEMPTS:
+                    time.sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
         assert last_err is not None
         raise last_err
