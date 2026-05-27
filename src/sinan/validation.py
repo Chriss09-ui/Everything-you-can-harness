@@ -116,11 +116,14 @@ _REQUIRED_FIELDS = {
         "overall_pass", "summary",
     },
     "fix_result": {
-        # status + files is the contract for implement/fix file writeback; the
-        # ``verified`` flag is what _generator_fix_router keys off to break out
-        # of the fix loop early. Requiring it in the schema prevents the silent
-        # "run to the 2-attempt cap every time" cost when LLM omits it.
-        "status", "files", "verified",
+        # NOTE: ``verified`` is intentionally NOT in the schema. generator_fix
+        # reads ``result.get("verified")`` and only falls back to sanity.passed
+        # when the LLM omitted the field entirely. If we required it here,
+        # LLMs that explicitly return ``verified: false`` (admitting they
+        # didn't fix the bug) would still pass schema, but the code path
+        # difference between "missing" and "false" matters — see
+        # generator_fix.py for the full rule.
+        "status", "files",
     },
     "bug_report": {
         "bugs", "total_bugs", "sprint_number",

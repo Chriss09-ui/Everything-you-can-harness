@@ -63,12 +63,15 @@ def generator_fix_node(state: CodingState) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f["content"])
 
-    # Self-test after fix — sanity check is the objective corroboration of
-    # the LLM's self-reported "verified" flag. If they disagree, sanity wins
-    # (it actually runs main.py; the LLM only claims to).
+    # Self-test after fix. ``run_sanity_check`` only verifies that the
+    # harness still has src/ + main.py — it does NOT check the bug was fixed.
+    # So we only fall back to sanity.passed when the LLM omitted ``verified``
+    # entirely. If the LLM explicitly returned ``verified: false`` (admitted
+    # it didn't fix the bug) we honour that signal — overwriting it with
+    # "files still exist" would let bugs slip past the fix loop.
     sanity = run_sanity_check(state["run_id"])
     result["self_test_passed"] = sanity.passed
-    if not result.get("verified"):
+    if "verified" not in result:
         result["verified"] = sanity.passed
 
     state["fix_result"] = result
