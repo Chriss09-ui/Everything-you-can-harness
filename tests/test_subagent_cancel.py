@@ -1,64 +1,80 @@
-"""Regression test for M13: subagent failure bails out fast.
+"""Regression test for M13: subagent_review_node bails out fast on failure.
 
-The pattern now matches subagent_review.py: ``wait(..., FIRST_EXCEPTION)``
-returns as soon as any future raises, then ``shutdown(wait=False,
-cancel_futures=True)`` bails out. The slow agent should be cancelled
-rather than waited on.
+Validates the REAL node — not just a copy of the cancel pattern — so that any
+future change to ``subagent_review.py`` that breaks the FIRST_EXCEPTION wiring
+will fail this test. Earlier versions of this file tested a standalone
+ThreadPoolExecutor snippet that had no connection to the node, so a broken
+``subagent_review_node`` would still pass.
+
+Strategy: monkeypatch ``_call_subagent`` with three controlled stubs (fast OK,
+slow fail, very-slow OK), drive ``subagent_review_node`` end-to-end against a
+tmp run dir, and assert it raises within well under the slow stub's runtime.
 """
 import sys
 import time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
-def _fast_ok():
-    return "ok"
+def test_subagent_review_node_fails_fast(tmp_path, monkeypatch):
+    from sinan import artifacts as art
+    monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
+    from sinan.nodes import subagent_review as mod
 
+    call_log: list[tuple[str, float]] = []
 
-def _slow_then_fail():
-    time.sleep(0.5)
-    raise RuntimeError("slow subagent failed")
+    def fake_call_subagent(client, brief_text, framework_text, name, role, prompt_key):
+        start = time.time()
+        if name == "memory":
+            call_log.append((name, time.time() - start))
+            return {"design": {}, "review": {
+                "agent_name": "memory",
+                "incompatibilities": [],
+                "missing_elements": [],
+                "endorsed_elements": [],
+                "summary": "fast ok",
+            }}
+        if name == "handoff":
+            time.sleep(0.5)
+            call_log.append((name, time.time() - start))
+            raise RuntimeError("simulated handoff failure")
+        if name == "eval":
+            time.sleep(3.0)
+            call_log.append((name, time.time() - start))
+            return {"design": {}, "review": {
+                "agent_name": "eval",
+                "incompatibilities": [],
+                "missing_elements": [],
+                "endorsed_elements": [],
+                "summary": "very slow ok",
+            }}
+        raise AssertionError(f"unexpected subagent: {name}")
 
+    monkeypatch.setattr(mod, "_call_subagent", fake_call_subagent)
+    monkeypatch.setattr(mod, "get_llm_client", lambda: object())
 
-def _very_slow_ok():
-    time.sleep(2.0)
-    return "slow_ok"
+    state = {
+        "run_id": "subagent_cancel_test",
+        "user_brief_form": {"primary_goal": "x"},
+        "framework_design": {"nodes": [], "edges": [], "entry_point": "x"},
+        "artifact_versions": {},
+    }
 
+    art.ensure_run_dir(state["run_id"])
 
-def test_failure_bails_fast():
-    """When one subagent fails, we should NOT wait for the slow one to
-    finish. Upper bound: well under the slow task's 2.0s duration."""
     start = time.time()
-    first_failure = None
-    pool = ThreadPoolExecutor(max_workers=3)
-    try:
-        futures = {
-            pool.submit(_fast_ok): "fast",
-            pool.submit(_slow_then_fail): "fail",
-            pool.submit(_very_slow_ok): "slow",
-        }
-        done, not_done = wait(futures, return_when=FIRST_EXCEPTION)
-        for f in done:
-            try:
-                f.result()
-            except Exception as exc:
-                if first_failure is None:
-                    first_failure = exc
-        for f in not_done:
-            f.cancel()
-    finally:
-        if first_failure is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
-        else:
-            pool.shutdown(wait=True)
-
+    with pytest.raises(RuntimeError, match="subagent failed during review"):
+        mod.subagent_review_node(state)
     elapsed = time.time() - start
-    assert first_failure is not None, "test setup: expected a failure"
-    # Failing task sleeps 0.5s, so wait returns ~0.5s.
-    # slow_ok (2.0s) should be cancelled — if waited on, elapsed >= 2.0.
-    assert elapsed < 1.5, (
-        f"failure path took {elapsed:.2f}s, expected < 1.5s. "
-        f"slow subagent was probably waited on instead of cancelled."
+
+    # The slow stub sleeps 3.0s. If subagent_review_node were waiting on it,
+    # elapsed would be ~3s. FIRST_EXCEPTION + cancel_futures should let us
+    # exit shortly after the 0.5s failure fires.
+    assert elapsed < 2.0, (
+        f"subagent_review_node took {elapsed:.2f}s after a 0.5s failure; "
+        f"expected < 2.0s. The slow subagent was likely waited on instead "
+        f"of cancelled — check the FIRST_EXCEPTION + cancel_futures wiring."
     )
