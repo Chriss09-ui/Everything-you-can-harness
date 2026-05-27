@@ -41,11 +41,15 @@ def register_coding_mock_responses() -> None:
         "strategy": "先实现基础结构",
     }, ensure_ascii=False))
 
+    # Generator's mock writes files under harness/ root. ``main.py`` MUST be
+    # at harness/main.py (not harness/src/main.py) so the e2e runner can find
+    # it; the runner's sanity check and smoke test both look there.
     MockLLMClient.register("请实现以下功能", json.dumps({
         "status": "implemented",
         "files": [
+            {"path": "main.py", "content": "import json\nprint(json.dumps({'ok': True}))\n",
+             "action": "create"},
             {"path": "src/__init__.py", "content": "", "action": "create"},
-            {"path": "src/main.py", "content": "# placeholder\n", "action": "create"},
         ],
         "summary": "Feature implemented via mock",
     }, ensure_ascii=False))

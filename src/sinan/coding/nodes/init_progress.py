@@ -44,4 +44,8 @@ def init_progress_node(state: CodingState) -> dict:
     # last-writer-wins reducer. The phase is set by session_setup_entry after
     # the fan-in completes.
     append_progress_log(state["run_id"], "INIT_PROGRESS", "claude-progress.txt created")
-    return state
+    # Returning {} (not state) keeps this node a pure side-effect step. The
+    # Send() fan-out siblings all share the default LastValue reducer on every
+    # state field — returning the full state would re-write every key from each
+    # parallel branch and trip InvalidUpdateError.
+    return {}

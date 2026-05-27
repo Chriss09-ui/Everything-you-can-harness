@@ -40,4 +40,6 @@ def init_feature_list_node(state: CodingState) -> dict:
     # NOTE: do NOT write state["current_phase"] — see init_progress.py.
     append_progress_log(state["run_id"], "INIT_FEATURE_LIST",
         f"feature_list.json created with {len(features)} features")
-    return state
+    # Only return the key we actually wrote; see init_progress.py for why we
+    # don't return the full state (Send() fan-out + LastValue reducer).
+    return {"feature_list": feature_list}

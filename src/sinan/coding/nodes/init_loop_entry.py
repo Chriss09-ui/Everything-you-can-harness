@@ -32,4 +32,5 @@ def init_loop_entry_node(state: CodingState) -> dict:
         "type": "loop_entry",
         "content": "Initializer complete — entering Coding Agent Loop",
     })
-    return state
+    # Returning {} keeps this a side-effect-only step; see init_progress.py.
+    return {}

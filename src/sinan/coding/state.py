@@ -48,6 +48,13 @@ class CodingState(TypedDict, total=False):
     # ── Session budget ──
     session_progress_count: int
 
+    # ── Init fan-out gate ──
+    # Set by session_init_node; True only on Sprint 1, Session 1 — gates the
+    # 5-node init parallel fan-out. Subsequent sprints / sessions skip it and
+    # go straight to session_setup_entry. Kept optional/None-default rather
+    # than bool, so unset is distinguishable from "not first init".
+    _is_first_init: Optional[bool]
+
     # ── Session context (parallel reads, merged by reducer) ──
     # Fields: pwd, progress, feature_list, git_history
     # Written by read_pwd, read_progress, read_feature_list, read_git_log in parallel

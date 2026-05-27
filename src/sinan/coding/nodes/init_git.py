@@ -36,4 +36,5 @@ def init_git_node(state: CodingState) -> dict:
 
     # NOTE: do NOT write state["current_phase"] — see init_progress.py.
     append_progress_log(run_id, "INIT_GIT", "git repository initialized")
-    return state
+    # Returning {} keeps this a side-effect-only step; see init_progress.py.
+    return {}

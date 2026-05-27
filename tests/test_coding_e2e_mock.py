@@ -37,9 +37,14 @@ def test_coding_e2e_happy_path(monkeypatch):
     monkeypatch.setattr(bt_mod, "git_revert", lambda run_id, ref: "reverted")
     monkeypatch.setattr(bt_mod, "git_status", lambda run_id: "")
 
-    # Patch subprocess.run for init.sh
+    # Patch subprocess.run so the runner-cum-test harness doesn't actually
+    # spawn python3 against our mock main.py. Return a CompletedProcess with
+    # exit 0 and a JSON-yielding stdout so _evaluate_case sees a clean pass.
     import subprocess
-    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: None)
+    from subprocess import CompletedProcess
+    def _fake_run(*args, **kwargs):
+        return CompletedProcess(args=args, returncode=0, stdout='{"ok": true}', stderr="")
+    monkeypatch.setattr(subprocess, "run", _fake_run)
 
     # Patch input() for any interactive prompts
     monkeypatch.setattr("builtins.input", lambda p="": "done")

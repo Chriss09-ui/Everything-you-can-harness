@@ -80,6 +80,28 @@ def git_revert(run_id: str, ref: str) -> str:
     return msg
 
 
+def git_save_recovery_ref(run_id: str, label: str) -> Optional[str]:
+    """Snapshot the current HEAD under refs/sinan/<label> before a destructive op.
+
+    Returns the SHA saved, or None if HEAD could not be resolved (e.g. empty
+    repo). The ref is recoverable via ``git update-ref -d refs/sinan/<label>``
+    or by inspecting reflog.
+    """
+    head = _run_git(run_id, "rev-parse", "HEAD")
+    if head.returncode != 0 or not head.stdout.strip():
+        return None
+    sha = head.stdout.strip()
+    _run_git(run_id, "update-ref", f"refs/sinan/{label}", sha)
+    append_progress_log(run_id, "GIT", f"Recovery ref refs/sinan/{label} -> {sha[:7]}")
+    return sha
+
+
+def git_ref_exists(run_id: str, ref: str) -> bool:
+    """Check whether the given ref resolves to a real commit."""
+    result = _run_git(run_id, "rev-parse", "--verify", ref)
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def git_save_good_commit(run_id: str, state: dict) -> None:
     """Save the current HEAD as last_good_commit."""
     result = _run_git(run_id, "rev-parse", "HEAD")

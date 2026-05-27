@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -291,8 +292,11 @@ def _run_main_py(harness_dir: Path, user_input: str, timeout_s: int = 60):
     env["PYTHONPATH"] = str(harness_dir) + os.pathsep + env.get("PYTHONPATH", "")
 
     try:
+        # sys.executable matches the in-process interpreter, so we don't
+        # accidentally shell out to a system python3 that lacks the deps
+        # the user's venv has.
         return subprocess.run(
-            ["python3", "main.py", user_input or ""],
+            [sys.executable, "main.py", user_input or ""],
             cwd=harness_dir,
             capture_output=True,
             text=True,

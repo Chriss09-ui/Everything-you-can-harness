@@ -43,4 +43,5 @@ def init_script_node(state: CodingState) -> dict:
 
     # NOTE: do NOT write state["current_phase"] — see init_progress.py.
     append_progress_log(state["run_id"], "INIT_SCRIPT", "init.sh created")
-    return state
+    # Returning {} keeps this a side-effect-only step; see init_progress.py.
+    return {}

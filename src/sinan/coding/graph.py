@@ -189,6 +189,7 @@ def build_coding_graph() -> StateGraph:
         _evaluator_bugs_router,
         {
             "generator_fix": "generator_fix",
+            "sprint_complete": "sprint_complete",
         },
     )
 
@@ -305,6 +306,13 @@ def _evaluator_qa_router(state: CodingState) -> str:
 
 
 def _evaluator_bugs_router(state: CodingState) -> str:
+    # If the bug report is unmanageably large, no point dragging the sprint
+    # through a 2-round fix loop that won't converge. Bail to sprint_complete,
+    # which will plan a new (smaller-scope) sprint.
+    bug_report = state.get("bug_report") or {}
+    bugs = bug_report.get("bugs", [])
+    if len(bugs) >= 20:
+        return "sprint_complete"
     return "generator_fix"
 
 

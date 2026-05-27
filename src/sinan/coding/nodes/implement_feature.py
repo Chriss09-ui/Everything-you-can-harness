@@ -49,10 +49,16 @@ def implement_feature_node(state: CodingState) -> dict:
     spec = state.get("spec") or {}
 
     if not feature:
-        state["current_feature_status"] = "error"
-        append_progress_log(state["run_id"], "IMPLEMENT_FEATURE", f"Feature {feature_id} not found")
-        finalize_phase(state["run_id"])
-        return state
+        # Fail fast — silently returning leaves test_feature to operate on
+        # a missing feature, which produces a confusing "passed/failed"
+        # report downstream. Better to surface the routing/feature_list
+        # corruption here.
+        available = [f.get("id") for f in features]
+        raise RuntimeError(
+            f"implement_feature: feature '{feature_id}' not found in "
+            f"feature_list (have {available}). pick_feature misrouted or "
+            f"feature_list got corrupted."
+        )
 
     harness_dir = get_run_dir(state["run_id"]) / "harness"
     feature_retry = state.get("feature_retry_count", 0)
