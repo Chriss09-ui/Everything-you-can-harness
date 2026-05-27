@@ -27,7 +27,14 @@ class CodingState(TypedDict, total=False):
     spec: Optional[dict]                 # product spec from planner
     sprint_contract: Optional[dict]      # negotiated sprint goals
     sprint_result: Optional[dict]        # sprint evaluation summary
-    feature_list: Optional[dict]         # in-memory view of feature_list.json
+    # feature_list: in-memory view of feature_list.json. Written by planner,
+    # init_feature_list, read_feature_list, and commit_feature. NO reducer:
+    # the graph guarantees only ONE of these runs per super-step. planner and
+    # init_feature_list run before any fan-out; read_feature_list runs inside
+    # the session fan-out but is the sole feature_list writer there;
+    # commit_feature runs sequentially after the feature loop. If a future
+    # change adds a parallel writer, switch to a LastValue or merge reducer.
+    feature_list: Optional[dict]
     current_feature_id: Optional[str]
     current_feature_status: Optional[str]
     test_result: Optional[dict]
