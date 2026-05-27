@@ -24,7 +24,10 @@ class HarnessBuilderState(TypedDict):
     # ── User Input ──
     user_raw_input: str
     user_supplements: list[Optional[str]]
-    user_brief_answers: list[dict]
+    # user_brief_answers defaults to None so load_state_or_file can distinguish
+    # "sinan_debrief hasn't run yet" (None → fall back to disk) from
+    # "sinan_debrief ran but the user skipped every question" ([] → use []).
+    user_brief_answers: Optional[list[dict]]
 
     # ── Core Artifacts ──
     requirement_pack: Optional[dict]
@@ -72,7 +75,7 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
         current_phase="INTAKE",
         user_raw_input="",
         user_supplements=[],
-        user_brief_answers=[],
+        user_brief_answers=None,
         requirement_pack=None,
         spec_review=None,
         brief_debate=None,

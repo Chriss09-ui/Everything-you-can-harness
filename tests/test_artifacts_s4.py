@@ -96,3 +96,43 @@ def test_no_state_no_disk_returns_default(tmp_path, monkeypatch):
 
     got = load_state_or_file(state, "ghost", default=[])
     assert got == [], f"expected explicit default [], got {got!r}"
+
+
+def test_user_brief_answers_real_world_scenario(tmp_path, monkeypatch):
+    """The canonical S4 scenario: sinan_debrief writes user_brief_answers=[].
+
+    Before the fix, brief_compile read this '' (falsy) and fell back to disk
+    — possibly picking up a stale user_brief_answers.json from a previous run,
+    silently using the wrong answers. This test pins the make_initial_state +
+    load_state_or_file contract end-to-end so a regression cannot slip back in.
+    """
+    from sinan import artifacts as art
+    from sinan.state import make_initial_state
+    runs = tmp_path / "runs"
+    monkeypatch.setattr(art, "RUNS_DIR", runs)
+
+    run_id = "s4_real_world"
+    ensure_run_dir(run_id)
+
+    # Simulate stale disk file from a previous run
+    write_json(run_id, "user_brief_answers.json", [
+        {"question": "stale", "answer": "leaked"}
+    ])
+
+    # Scenario A: user skipped every question → sinan_debrief wrote []
+    state_a = make_initial_state(run_id)
+    state_a["user_brief_answers"] = []  # what sinan_debrief produces
+    got_a = load_state_or_file(state_a, "user_brief_answers", default=[])
+    assert got_a == [], (
+        f"user skipped all: expected [], got {got_a!r} — "
+        f"stale disk leak would corrupt the new run"
+    )
+
+    # Scenario B: make_initial_state default (None); sinan_debrief hasn't run.
+    # resume scenario would go back to disk for the answers.
+    state_b = make_initial_state(run_id)
+    got_b = load_state_or_file(state_b, "user_brief_answers", default=[])
+    assert got_b == [{"question": "stale", "answer": "leaked"}], (
+        f"resume case: expected stale disk data, got {got_b!r} — "
+        f"resume fallback to disk must keep working"
+    )
