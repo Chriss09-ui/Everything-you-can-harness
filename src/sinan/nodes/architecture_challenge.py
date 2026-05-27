@@ -10,7 +10,9 @@ Reads:
 Writes:
     state["architecture_review"] — critical review with challenge_score
     state["current_phase"]        — "ARCHITECTURE_CHALLENGE"
-    state["risk_register"]        — appends arch risks
+    state["risk_register"]        — appends arch risks (via reducer merge —
+                                     node returns partial update, never
+                                     mutates the running list directly)
     state["artifact_versions"]    — records architecture_review version
 
 Artifacts:
@@ -51,19 +53,15 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     review = parse_and_validate_artifact(raw, "architecture_review")
 
     write_json(state["run_id"], "architecture_review.json", review)
-    state["architecture_review"] = review
-    state["current_phase"] = "ARCHITECTURE_CHALLENGE"
-    state["artifact_versions"]["architecture_review"] = "1.0"
 
     score = review.get("challenge_score", 0)
-    state["risk_register"].extend([
+    new_risks = [
         {"type": "arch_risk", "item": r}
         for r in review.get("over_engineering_flags", [])
-    ])
-    state["risk_register"].extend([
+    ] + [
         {"type": "arch_risk", "item": r}
         for r in review.get("failure_mode_omissions", [])
-    ])
+    ]
 
     append_progress_log(state["run_id"], "ARCHITECTURE_CHALLENGE", f"Review complete, score={score}")
     append_decision_log(state["run_id"], {
@@ -75,4 +73,13 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    return state
+    # Partial return: ``risk_register`` uses operator.add reducer, so this
+    # list gets concat'd onto the running register safely even if other
+    # risk-writing nodes run in parallel.
+    return {
+        "architecture_review": review,
+        "current_phase": "ARCHITECTURE_CHALLENGE",
+        "artifact_versions": {**state.get("artifact_versions", {}),
+                              "architecture_review": "1.0"},
+        "risk_register": new_risks,
+    }

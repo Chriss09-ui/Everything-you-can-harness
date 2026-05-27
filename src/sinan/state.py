@@ -1,6 +1,7 @@
 """HarnessBuilderState — the central state schema for the Sinan workflow."""
 from __future__ import annotations
-from typing import TypedDict, Optional, Literal
+import operator
+from typing import Annotated, TypedDict, Optional, Literal
 from datetime import datetime, timezone
 
 
@@ -61,7 +62,13 @@ class HarnessBuilderState(TypedDict):
     arch_reject_count: int
 
     # ── Risk ──
-    risk_register: list[dict]
+    # Each risk-writing node (spec_challenge, architecture_challenge) returns
+    # a partial update {"risk_register": [...its new risks...]}. The
+    # ``operator.add`` reducer concatenates them onto the running list, which
+    # is safe under concurrent writes (e.g. if risk discovery is later fanned
+    # out into parallel reviewers — list.extend from a shared reference would
+    # silently lose entries in that scenario).
+    risk_register: Annotated[list[dict], operator.add]
 
     # ── Messages ──
     messages: list[dict]

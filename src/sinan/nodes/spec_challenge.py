@@ -9,7 +9,9 @@ Reads:
 Writes:
     state["spec_review"]       — critical review with challenge_score
     state["current_phase"]     — "SPEC_CHALLENGE"
-    state["risk_register"]     — appends ambiguity risks
+    state["risk_register"]     — appends ambiguity risks (via reducer merge —
+                                  node returns partial update, never mutates
+                                  the running list directly)
     state["artifact_versions"] — records spec_review version
 
 Artifacts:
@@ -44,24 +46,20 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
     review = parse_and_validate_artifact(raw, "spec_review")
 
     write_json(state["run_id"], "spec_review.json", review)
-    state["spec_review"] = review
-    state["current_phase"] = "SPEC_CHALLENGE"
-    state["artifact_versions"]["spec_review"] = "1.0"
 
     score = review.get("challenge_score", 0)
     ambiguities = review.get("ambiguities", []) or []
     # Tolerate malformed entries: top-level schema doesn't enforce inner shape,
     # so an LLM may produce an ambiguity dict without the "item" field.
     flagged = [a.get("item", "") for a in ambiguities if isinstance(a, dict)]
-    risk_register = state.setdefault("risk_register", [])
-    risk_register.extend([
+    new_risks = [
         {
             "type": "ambiguity",
             "item": a.get("item", ""),
             "risk": a.get("risk_if_unaddressed", ""),
         }
         for a in ambiguities if isinstance(a, dict)
-    ])
+    ]
 
     append_progress_log(state["run_id"], "SPEC_CHALLENGE", f"Review complete, score={score}")
     append_decision_log(state["run_id"], {
@@ -73,4 +71,13 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    return state
+    # Partial return: ``risk_register`` is an Annotated list with operator.add
+    # reducer (see state.py). LangGraph will concat this onto the running
+    # list, which is safe even if other risk-writing nodes ran in parallel.
+    return {
+        "spec_review": review,
+        "current_phase": "SPEC_CHALLENGE",
+        "artifact_versions": {**state.get("artifact_versions", {}),
+                              "spec_review": "1.0"},
+        "risk_register": new_risks,
+    }
