@@ -1,7 +1,9 @@
 """Artifact persistence — run directory creation, JSON/YAML/MD file writes + version management."""
 from __future__ import annotations
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 import yaml
@@ -136,16 +138,39 @@ def write_json(
     version_note: str = "",
 ) -> Path:
     """Write a JSON artifact. If versioned=True and the file already exists,
-    archive the old version before writing the new one."""
+    archive the old version before writing the new one.
+
+    Uses atomic-rename so a crash mid-write leaves the previous version intact
+    instead of a truncated file (rare in practice but unrecoverable when it
+    happens — the next node would JSONDecodeError on the half-file).
+    """
     run_dir = ensure_run_dir(run_id)
     path = run_dir / filename
 
     if versioned and path.exists():
         _archive_artifact(run_id, filename, version_note)
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(path, data)
     return path
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write data as JSON to path atomically: write to tmp, then os.replace."""
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, path)
+    except Exception:
+        # Best-effort cleanup; ignore failures (the replace-or-raise contract
+        # is what matters).
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _archive_artifact(run_id: str, filename: str, note: str = "") -> None:
@@ -194,16 +219,31 @@ def _archive_artifact(run_id: str, filename: str, note: str = "") -> None:
 
 def write_yaml(run_id: str, filename: str, data: Any) -> Path:
     path = ensure_run_dir(run_id) / filename
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+    _atomic_write(path, lambda f: yaml.dump(data, f, default_flow_style=False, allow_unicode=True))
     return path
 
 
 def write_md(run_id: str, filename: str, content: str) -> Path:
     path = ensure_run_dir(run_id) / filename
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    _atomic_write(path, lambda f: f.write(content))
     return path
+
+
+def _atomic_write(path: Path, writer) -> None:
+    """Generic atomic-write helper: writer is called with an open file handle."""
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            writer(f)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def update_run_state(run_id: str, phase: str, **kwargs) -> None:
@@ -241,8 +281,10 @@ def update_run_state(run_id: str, phase: str, **kwargs) -> None:
             h["status"] = "completed"
     state.setdefault("phase_history", []).append(entry)
 
-    with open(state_path, "w") as f:
-        yaml.dump(state, f, default_flow_style=False, allow_unicode=True)
+    _atomic_write(
+        state_path,
+        lambda f: yaml.dump(state, f, default_flow_style=False, allow_unicode=True),
+    )
 
 
 def finalize_phase(run_id: str) -> None:
@@ -258,8 +300,10 @@ def finalize_phase(run_id: str) -> None:
             h["exited_at"] = now
             h["status"] = "completed"
             break
-    with open(state_path, "w") as f:
-        yaml.dump(state, f, default_flow_style=False, allow_unicode=True)
+    _atomic_write(
+        state_path,
+        lambda f: yaml.dump(state, f, default_flow_style=False, allow_unicode=True),
+    )
 
 
 def append_decision_log(run_id: str, decision: dict) -> None:
