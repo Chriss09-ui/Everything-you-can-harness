@@ -22,7 +22,7 @@ Routes:
 """
 from __future__ import annotations
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
 from ..prompts import get_prompt
@@ -63,8 +63,16 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
     # 子代理并发调用：每个子代理内部 2 次 LLM (design + review) 串行，但
     # 三个子代理之间互不依赖，可以并发。串行下总耗时 ~6×LLM 延迟，并发下
     # 降到 ~2×LLM 延迟（最慢那个子代理的耗时）。
+    #
+    # 失败快速退出（M13）：用 ``concurrent.futures.wait`` 的 FIRST_EXCEPTION
+    # 信号——任何一个 future 抛错都立刻返回，配合 ``shutdown(wait=False,
+    # cancel_futures=True)`` 把还没开始的工作取消掉。``with`` 上下文管理器
+    # 或者 ``as_completed`` 都会等到所有已 submit 的 future 跑完，遇到失败
+    # 也要拖 ~10-30s 才能退出。
     results_by_name: dict[str, dict] = {}
-    with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_WORKERS) as pool:
+    first_failure: Exception | None = None
+    pool = ThreadPoolExecutor(max_workers=_MAX_PARALLEL_WORKERS)
+    try:
         future_to_name = {
             pool.submit(
                 _call_subagent, client, brief_text, framework_text,
@@ -72,14 +80,33 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
             ): name
             for name, role, prompt_key in _SUBAGENT_CALLS
         }
-        for future in as_completed(future_to_name):
+        # Block until ALL done OR the first one raises. Without
+        # FIRST_EXCEPTION, we'd wait for the slowest even after a failure.
+        done, not_done = wait(future_to_name, return_when=FIRST_EXCEPTION)
+        for future in done:
             name = future_to_name[future]
             try:
                 results_by_name[name] = future.result()
             except Exception as exc:
-                raise RuntimeError(
-                    f"subagent '{name}' failed during review"
-                ) from exc
+                if first_failure is None:
+                    first_failure = exc
+                # Don't break — keep draining futures so we record which
+                # subagents finished cleanly, even if one failed.
+        # If some weren't done when wait returned, it's because one raised
+        # and FIRST_EXCEPTION triggered. Cancel them so shutdown is fast.
+        for future in not_done:
+            future.cancel()
+    finally:
+        if first_failure is not None:
+            # Fast-fail: don't wait for running LLM calls to come back.
+            pool.shutdown(wait=False, cancel_futures=True)
+        else:
+            pool.shutdown(wait=True)
+    if first_failure is not None:
+        raise RuntimeError(
+            f"subagent failed during review; pending jobs cancelled, "
+            f"running jobs were abandoned (Python cannot interrupt them)"
+        ) from first_failure
 
     # 顺序保持稳定（memory / handoff / eval），避免每次 run 因并发完成顺序
     # 不同而产出 JSON diff 抖动。
