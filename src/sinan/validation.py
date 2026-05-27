@@ -11,6 +11,13 @@ artifact must register its schema here in the same commit.
 from __future__ import annotations
 
 import json
+import re
+
+
+_FENCE_RE = re.compile(
+    r"^\s*```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*)```\s*$",
+    re.DOTALL,
+)
 
 
 _REQUIRED_FIELDS = {
@@ -123,9 +130,9 @@ _REQUIRED_FIELDS = {
 def parse_llm_json(raw: str, artifact_name: str) -> dict:
     """Strip markdown fences and parse a JSON-only LLM response."""
     text = raw.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+    m = _FENCE_RE.match(text)
+    if m:
+        text = m.group("body").strip()
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:

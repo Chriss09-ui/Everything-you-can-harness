@@ -23,10 +23,14 @@ from ..artifacts import update_run_state, append_progress_log, append_decision_l
 
 
 def intake_node(state: HarnessBuilderState, user_input: str) -> dict:
-    update_run_state(state["run_id"], "INTAKE")
+    # Pass started_at forward so run_state.yaml's started_at is consistent
+    # from the very first phase, not set later by spec_expansion.
+    update_run_state(state["run_id"], "INTAKE", started_at=state.get("started_at", ""))
     state["user_raw_input"] = user_input
     state["current_phase"] = "INTAKE"
-    state["messages"].append({"role": "user", "content": user_input})
+    # setdefault in case state was constructed outside make_initial_state
+    # (e.g. partial resume), which would leave messages unset → AttributeError.
+    state.setdefault("messages", []).append({"role": "user", "content": user_input})
 
     append_progress_log(state["run_id"], "INTAKE", f"Received user input: {user_input[:80]}...")
     append_decision_log(state["run_id"], {

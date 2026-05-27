@@ -118,21 +118,42 @@ class _OpenAIClient(LLMClient):
     def __init__(self, api_key: str):
         from openai import OpenAI
         base_url = os.getenv("OPENAI_BASE_URL")
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        # Give the SDK an explicit timeout so a stuck provider doesn't hang
+        # the entire graph indefinitely. 120s is long enough for the slowest
+        # models but bounded.
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=120.0)
         self.model = os.getenv("LLM_MODEL", "gpt-4o-mini")
         if base_url:
             _log.info("OpenAI-compatible provider: base_url=%s model=%s", base_url, self.model)
 
     def generate(self, system: str, user: str) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.3,
-        )
-        return response.choices[0].message.content
+        # Retry once on transient errors (network, rate limit, empty response).
+        # Persistent failures still surface so the node can fail fast.
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=0.3,
+                )
+                if not response.choices:
+                    raise ValueError("LLM returned empty choices list")
+                content = response.choices[0].message.content
+                if content is None:
+                    raise ValueError("LLM returned None content (possible finish_reason="
+                                     f"{response.choices[0].finish_reason})")
+                return content
+            except Exception as exc:
+                last_err = exc
+                _log.warning("OpenAI attempt %d failed: %s: %s",
+                             attempt + 1, type(exc).__name__, exc)
+        # Both attempts failed — propagate so the caller's error path runs.
+        assert last_err is not None
+        raise last_err
 
 
 class _AnthropicClient(LLMClient):
@@ -142,10 +163,21 @@ class _AnthropicClient(LLMClient):
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
     def generate(self, system: str, user: str) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        return response.content[0].text
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                )
+                if not response.content:
+                    raise ValueError("Anthropic returned empty content block list")
+                return response.content[0].text
+            except Exception as exc:
+                last_err = exc
+                _log.warning("Anthropic attempt %d failed: %s: %s",
+                             attempt + 1, type(exc).__name__, exc)
+        assert last_err is not None
+        raise last_err
