@@ -76,7 +76,18 @@ def approval_gate_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     judgment = parse_llm_json(raw, "shoumen_judgment")
 
-    risk_level = judgment.get("risk_level", "unknown")
+    # Default risk_level to "high" when the LLM omits the field. "high" is in
+    # the documented set (low/medium/high/critical) and matches the design
+    # intent of this gate — when in doubt, force user review. Previously this
+    # fell back to "unknown", which polluted logs with a value outside the
+    # documented alphabet.
+    risk_level = judgment.get("risk_level", "high")
+    if risk_level not in ("low", "medium", "high", "critical"):
+        append_progress_log(
+            state["run_id"], "APPROVAL_GATE",
+            f"Got unexpected risk_level '{risk_level}'; coercing to 'high'",
+        )
+        risk_level = "high"
     reasoning = judgment.get("reasoning", "")
     key_concerns = judgment.get("key_concerns", [])
     checklist = judgment.get("checklist", {})

@@ -207,34 +207,53 @@ def _build_ai_draft(
 
 
 def _derive_state_schema(state: HarnessBuilderState) -> dict:
-    """Derive the target harness's state schema from the workflow state."""
-    known_fields = [
-        {"name": "run_id", "type": "string", "description": "Run identifier"},
-        {"name": "current_phase", "type": "string", "description": "Current execution phase"},
-        {"name": "user_raw_input", "type": "string", "description": "Original user input"},
-        {"name": "messages", "type": "list[dict]", "description": "Conversation history"},
-    ]
+    """Return the target harness's state schema description.
 
-    extra_fields = []
-    brief = state.get("user_brief_form") or {}
-    inclusions = brief.get("scope_inclusions", [])
-    exclusions = brief.get("scope_exclusions", [])
+    Previously this was derived from ``user_brief_form.scope_inclusions``
+    (Chinese strings), which was fragile: renaming a scope item in the
+    requirement layer silently shrank the schema, and no validator caught it.
 
-    if "需求分析与扩展" in inclusions:
-        extra_fields.append({"name": "requirement_pack", "type": "dict", "description": "Expanded requirement pack"})
-    if "架构设计" in inclusions:
-        extra_fields.append({"name": "architecture_pack", "type": "dict", "description": "Architecture design package"})
-        extra_fields.append({"name": "framework_design", "type": "dict", "description": "Framework design artifact"})
-    if "用户审批" in inclusions:
-        extra_fields.append({"name": "gate_flags", "type": "dict", "description": "Gate evaluation flags"})
-    if exclusions:
-        for ex in exclusions:
-            if "沙盒" in ex or "sandbox" in ex.lower():
-                extra_fields.append({"name": "sandbox_sim", "type": "bool", "description": "Sandbox simulation mode"})
-
+    The actual source of truth is ``sinan.state.HarnessBuilderState``. Reflect
+    that directly here so the field stays stable across LLM-output drift.
+    """
     return {
-        "required_fields": known_fields + extra_fields,
-        "total_field_count": len(known_fields) + len(extra_fields),
+        "required_fields": [
+            # ── Meta ──
+            {"name": "run_id", "type": "string", "description": "Run identifier"},
+            {"name": "started_at", "type": "string", "description": "ISO-8601 start timestamp"},
+            {"name": "current_phase", "type": "string", "description": "Current execution phase"},
+            # ── User input ──
+            {"name": "user_raw_input", "type": "string", "description": "Raw user input"},
+            {"name": "user_supplements", "type": "list", "description": "User answers to debate questions"},
+            {"name": "user_brief_answers", "type": "list[dict]", "description": "Structured answer records"},
+            # ── Requirement-layer artifacts ──
+            {"name": "requirement_pack", "type": "dict", "description": "Tuopu expanded requirements"},
+            {"name": "spec_review", "type": "dict", "description": "Jiewen critical review"},
+            {"name": "brief_debate", "type": "dict", "description": "Tuopu-Jiewen debate result"},
+            {"name": "user_brief_form", "type": "dict", "description": "Final requirement contract"},
+            # ── Architecture-layer artifacts ──
+            {"name": "framework_design", "type": "dict", "description": "Initial framework draft"},
+            {"name": "subagent_reviews", "type": "dict", "description": "Memory/Handoff/Eval per-agent reviews"},
+            {"name": "subagent_outputs", "type": "dict", "description": "Memory/Handoff/Eval detailed designs"},
+            {"name": "framework_adjustments", "type": "dict", "description": "Round 3 adjustment record"},
+            {"name": "architecture_pack", "type": "dict", "description": "Integrated architecture pack"},
+            {"name": "architecture_review", "type": "dict", "description": "Nishen red-team review"},
+            {"name": "arch_revision_brief", "type": "dict", "description": "Revision brief on reject"},
+            {"name": "harness_design_draft", "type": "dict", "description": "Cross-layer design contract"},
+            # ── Gatekeeping ──
+            {"name": "gate_flags", "type": "dict", "description": "Risk-level, key_concerns, checklist"},
+            {"name": "arch_reject_count", "type": "int", "description": "User rejection counter (≤3)"},
+            {"name": "risk_register", "type": "list[dict]", "description": "Cross-layer risk tracking"},
+            # ── Flow control (interrupt/resume — currently placeholder) ──
+            {"name": "pending_interrupt", "type": "string", "description": "Optional[Literal]"},
+            {"name": "resume_payload", "type": "dict", "description": "User resume payload"},
+            # ── Scribe ──
+            {"name": "decision_log", "type": "list[dict]", "description": "Decision history"},
+            {"name": "progress_log", "type": "list[dict]", "description": "Progress history"},
+            {"name": "artifact_versions", "type": "dict", "description": "Version registry"},
+            # ── Messages ──
+            {"name": "messages", "type": "list[dict]", "description": "Conversation history raw"},
+        ],
     }
 
 
@@ -332,7 +351,7 @@ def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
     schema = draft.get("state_schema", {})
     schema_fields = schema.get("required_fields", [])
     if schema_fields:
-        lines.append(f"共 {schema.get('total_field_count', len(schema_fields))} 个字段：")
+        lines.append(f"共 {len(schema_fields)} 个字段：")
         lines.append("")
         lines.append("| 字段名 | 类型 | 描述 |")
         lines.append("|--------|------|------|")
