@@ -220,45 +220,66 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 
 
 def _archive_artifact(run_id: str, filename: str, note: str = "") -> None:
-    """Archive the existing artifact with a new version number."""
+    """Archive the existing live artifact under its already-assigned version.
+
+    The old data on disk was registered as v(N) by the previous
+    ``_register_current`` call. We keep that version number on the archive copy
+    (renaming the live filename to ``<base>_v<N>.json``) and demote the
+    registry entry to ``current=False``. The follow-up ``_register_current``
+    then assigns v(N+1) to the new live file. Each write increments the
+    version exactly once — the archived version number always matches the
+    contents.
+
+    Fallback: if no current entry exists in the registry (an un-tracked file
+    that's being archived for the first time), we assign the next available
+    version number rather than failing.
+    """
     from datetime import datetime, timezone
     run_dir = get_run_dir(run_id)
     current_path = run_dir / filename
     if not current_path.exists():
         return
 
-    # Read current content for comparison
     with open(current_path, encoding="utf-8") as f:
         current_data = json.load(f)
 
     registry = _get_registry(run_id)
     base_name = _strip_version_suffix(filename.replace(".json", ""))
-
-    # Assign next version number
     existing = registry.get(base_name, [])
-    next_version = max([e["version"] for e in existing], default=0) + 1
 
-    # Write archived copy
-    archived_name = f"{base_name}_v{next_version}.json"
+    current_entry = next(
+        (e for e in existing if e.get("current") and e["filename"] == filename),
+        None,
+    )
+    if current_entry is not None:
+        archived_version = current_entry["version"]
+    else:
+        archived_version = max([e["version"] for e in existing], default=0) + 1
+
+    archived_name = f"{base_name}_v{archived_version}.json"
     archived_path = run_dir / archived_name
     with open(archived_path, "w", encoding="utf-8") as f:
         json.dump(current_data, f, indent=2, ensure_ascii=False)
 
-    # Update registry — mark old current as non-current
-    for e in existing:
-        e["current"] = False
-
-    # Add new entry
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    entry = {
-        "version": next_version,
-        "filename": archived_name,
-        "current": False,
-        "archived_at": timestamp,
-        "note": note or f"Auto-archived before overwriting with v{next_version + 1}",
-    }
-    existing.append(entry)
-    registry[base_name] = existing
+    if current_entry is not None:
+        # Mutate in place: same version number, new filename, no longer current.
+        current_entry["filename"] = archived_name
+        current_entry["current"] = False
+        current_entry["archived_at"] = timestamp
+        if note:
+            current_entry["note"] = note
+    else:
+        for e in existing:
+            e["current"] = False
+        existing.append({
+            "version": archived_version,
+            "filename": archived_name,
+            "current": False,
+            "archived_at": timestamp,
+            "note": note or "Auto-archived (untracked predecessor)",
+        })
+        registry[base_name] = existing
 
     _save_registry(run_id, registry)
 
