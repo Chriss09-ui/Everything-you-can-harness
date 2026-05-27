@@ -22,6 +22,7 @@ Routes:
 """
 from __future__ import annotations
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
 from ..prompts import get_prompt
@@ -30,6 +31,18 @@ from ..artifacts import (
     append_decision_log, finalize_phase, load_state_or_file,
 )
 from ..validation import parse_llm_json, parse_and_validate_artifact
+
+
+# Three independent sub-agents with no shared mutable state — natural
+# candidates for a fan-out. Capped at 3 workers because that's exactly
+# how many sub-agents exist; adding more would only waste scheduler slots.
+_MAX_PARALLEL_WORKERS = 3
+
+_SUBAGENT_CALLS = [
+    ("memory",  "记忆模块设计师",   "zonggong_memory"),
+    ("handoff", "交接协议设计师", "zonggong_handoff"),
+    ("eval",    "评估专家",       "zonggong_eval"),
+]
 
 
 def subagent_review_node(state: HarnessBuilderState) -> dict:
@@ -47,27 +60,31 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
     framework_text = json.dumps(framework, indent=2, ensure_ascii=False)
 
-    # 子代理各自出详细设计 + 评审 framework
-    memory_result = _call_subagent(client, brief_text, framework_text, "memory", "记忆模块设计师", "zonggong_memory")
-    handoff_result = _call_subagent(client, brief_text, framework_text, "handoff", "交接协议设计师", "zonggong_handoff")
-    eval_result = _call_subagent(client, brief_text, framework_text, "eval", "评估专家", "zonggong_eval")
+    # 子代理并发调用：每个子代理内部 2 次 LLM (design + review) 串行，但
+    # 三个子代理之间互不依赖，可以并发。串行下总耗时 ~6×LLM 延迟，并发下
+    # 降到 ~2×LLM 延迟（最慢那个子代理的耗时）。
+    results_by_name: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_WORKERS) as pool:
+        future_to_name = {
+            pool.submit(
+                _call_subagent, client, brief_text, framework_text,
+                name, role, prompt_key,
+            ): name
+            for name, role, prompt_key in _SUBAGENT_CALLS
+        }
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                results_by_name[name] = future.result()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"subagent '{name}' failed during review"
+                ) from exc
 
-    # 评审报告（用于反馈给 framework）
-    memory_review = memory_result["review"]
-    handoff_review = handoff_result["review"]
-    eval_review = eval_result["review"]
-
-    reviews = {
-        "memory": memory_review,
-        "handoff": handoff_review,
-        "eval": eval_review,
-    }
-
-    subagent_outputs = {
-        "memory": memory_result["design"],
-        "handoff": handoff_result["design"],
-        "eval": eval_result["design"],
-    }
+    # 顺序保持稳定（memory / handoff / eval），避免每次 run 因并发完成顺序
+    # 不同而产出 JSON diff 抖动。
+    reviews = {name: results_by_name[name]["review"] for name, _, _ in _SUBAGENT_CALLS}
+    subagent_outputs = {name: results_by_name[name]["design"] for name, _, _ in _SUBAGENT_CALLS}
 
     write_json(state["run_id"], "subagent_reviews.json", reviews, versioned=True)
     write_json(state["run_id"], "subagent_outputs.json", subagent_outputs, versioned=True)
@@ -84,14 +101,14 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
 
     append_progress_log(
         state["run_id"], "SUBAGENT_REVIEW",
-        f"Sub-agent reviews complete: {total_incompat} incompatibilities, "
+        f"Sub-agent reviews complete (parallel): {total_incompat} incompatibilities, "
         f"{total_missing} missing elements, {total_endorsed} endorsed elements"
     )
     append_decision_log(state["run_id"], {
         "phase": "SUBAGENT_REVIEW",
         "type": "review_complete",
-        "content": f"3 sub-agents reviewed framework",
-        "rationale": f"memory/handoff/eval each produced design + review",
+        "content": f"3 sub-agents reviewed framework in parallel",
+        "rationale": f"memory/handoff/eval each produced design + review concurrently",
         "incompatibilities": total_incompat,
         "missing_elements": total_missing,
     })
@@ -101,7 +118,11 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
 
 
 def _call_subagent(client, brief_text: str, framework_text: str, name: str, role: str, prompt_key: str) -> dict:
-    """调用子代理：先生成详细设计，再评审 framework。"""
+    """调用子代理：先生成详细设计，再评审 framework。
+
+    在并发上下文下执行（每个子代理独立线程），所以不能依赖 / 写入任何
+    共享可变状态——只通过返回值传出结果。
+    """
     # Step 1: 子代理出详细设计
     system = get_prompt(prompt_key)
     design_user = (
