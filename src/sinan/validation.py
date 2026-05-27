@@ -116,7 +116,11 @@ _REQUIRED_FIELDS = {
         "overall_pass", "summary",
     },
     "fix_result": {
-        "status", "files",
+        # status + files is the contract for implement/fix file writeback; the
+        # ``verified`` flag is what _generator_fix_router keys off to break out
+        # of the fix loop early. Requiring it in the schema prevents the silent
+        # "run to the 2-attempt cap every time" cost when LLM omits it.
+        "status", "files", "verified",
     },
     "bug_report": {
         "bugs", "total_bugs", "sprint_number",

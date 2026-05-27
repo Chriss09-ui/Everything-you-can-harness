@@ -52,7 +52,7 @@ def generator_fix_node(state: CodingState) -> dict:
         f"Bug 报告：\n{json.dumps(bugs, indent=2, ensure_ascii=False)}\n\n"
         f"项目目录：{harness_dir}\n\n"
         f"请修复上述 bug，确保修复不引入新的问题。修复完成后运行测试验证。\n\n"
-        f"输出 JSON：{{\"status\": \"fixed\", \"files\": [{{\"path\": \"...\", \"content\": \"...\", \"action\": \"modify\"}}], \"summary\": \"...\"}}"
+        f"输出 JSON：{{\"status\": \"fixed\", \"verified\": true|false, \"files\": [{{\"path\": \"...\", \"content\": \"...\", \"action\": \"modify\"}}], \"summary\": \"...\"}}"
     )
 
     raw = client.generate(system, user)
@@ -63,9 +63,13 @@ def generator_fix_node(state: CodingState) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f["content"])
 
-    # Self-test after fix
+    # Self-test after fix — sanity check is the objective corroboration of
+    # the LLM's self-reported "verified" flag. If they disagree, sanity wins
+    # (it actually runs main.py; the LLM only claims to).
     sanity = run_sanity_check(state["run_id"])
     result["self_test_passed"] = sanity.passed
+    if not result.get("verified"):
+        result["verified"] = sanity.passed
 
     state["fix_result"] = result
     state["fix_loop_count"] = fix_count + 1

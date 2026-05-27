@@ -72,6 +72,7 @@ def register_coding_mock_responses() -> None:
         "files": [
             {"path": "src/state.py", "content": "# patched\n", "action": "modify"},
         ],
+        "verified": True,
         "self_test_passed": True,
         "summary": "Bugs fixed via mock",
     }, ensure_ascii=False))
