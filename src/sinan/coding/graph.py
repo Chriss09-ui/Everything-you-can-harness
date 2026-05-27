@@ -29,7 +29,6 @@ from .nodes import (
     implement_feature,
     test_feature,
     commit_feature,
-    generator_review,
     evaluator_qa,
     evaluator_bugs,
     generator_fix,
@@ -77,8 +76,9 @@ def build_coding_graph() -> StateGraph:
     g.add_node("test_feature", _wrap(test_feature.test_feature_node))
     g.add_node("commit_feature", _wrap(commit_feature.commit_feature_node))
 
-    # Sprint review
-    g.add_node("generator_review", _wrap(generator_review.generator_review_node))
+    # Sprint review: evaluator_qa is the entry point (generator_review
+    # self-eval has been removed — sprint goes directly from commit_feature
+    # to evaluator_qa for independent QA).
     g.add_node("evaluator_qa", _wrap(evaluator_qa.evaluator_qa_node))
     g.add_node("evaluator_bugs", _wrap(evaluator_bugs.evaluator_bugs_node))
 
@@ -95,7 +95,6 @@ def build_coding_graph() -> StateGraph:
     g.add_edge("planner", "sprint_plan")
     g.add_edge("sprint_plan", "sprint_negotiate")
     g.add_edge("sprint_setup", "session_init")
-    g.add_edge("generator_review", "evaluator_qa")
     g.add_edge("implement_feature", "test_feature")
 
     # ── Session init: Sprint 1 → 5 parallel init branches (via Send) ──
@@ -132,7 +131,7 @@ def build_coding_graph() -> StateGraph:
         _pick_feature_router,
         {
             "implement_feature": "implement_feature",
-            "generator_review": "generator_review",
+            "evaluator_qa": "evaluator_qa",
         },
     )
 
@@ -171,7 +170,7 @@ def build_coding_graph() -> StateGraph:
         _commit_feature_router,
         {
             "pick_feature": "pick_feature",
-            "generator_review": "generator_review",
+            "evaluator_qa": "evaluator_qa",
         },
     )
 
@@ -268,7 +267,7 @@ def _sanity_check_router(state: CodingState) -> str:
 def _pick_feature_router(state: CodingState) -> str:
     if state.get("current_feature_id"):
         return "implement_feature"
-    return "generator_review"
+    return "evaluator_qa"
 
 
 def _test_feature_router(state: CodingState) -> str:
@@ -291,7 +290,7 @@ def _commit_feature_router(state: CodingState) -> str:
     unfinished = [f for f in sprint_features if not f.get("passes")]
     if unfinished:
         return "pick_feature"
-    return "generator_review"
+    return "evaluator_qa"
 
 
 def _evaluator_qa_router(state: CodingState) -> str:

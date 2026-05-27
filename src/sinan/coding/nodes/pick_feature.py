@@ -18,7 +18,7 @@ Artifacts:
 
 Routes:
     → implement_feature  when current_feature_id is set
-    → generator_review   when no feature selected (sprint scope done)
+    → evaluator_qa       when no feature selected (sprint scope done)
 """
 from __future__ import annotations
 import json

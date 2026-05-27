@@ -45,20 +45,39 @@ def bug_triage_node(state: CodingState) -> dict:
     if last_good and diff:
         # Simple heuristic: if there are significant uncommitted changes, revert
         triage_result["revert_decision"] = "suggest_revert"
-        triage_result["revert_performed"] = True
         git_revert(state["run_id"], last_good)
-        append_progress_log(state["run_id"], "BUG_TRIAGE",
-            f"Reverted to last good commit: {last_good[:7]}")
+        # After revert, check whether the working tree actually got cleaned.
+        # If git_revert succeeded (diff empty now), the sanity failure was
+        # almost certainly a transient caused by the now-discarded changes —
+        # we treat it as "recovered" and DON'T burn a retry slot. Only if
+        # revert failed (something is still dirty) do we count this as a
+        # real sanity_retry.
+        post_revert_diff = git_diff(state["run_id"])
+        recovered = not post_revert_diff
+        triage_result["revert_performed"] = True
+        triage_result["revert_cleaned_diff"] = recovered
+        if recovered:
+            append_progress_log(state["run_id"], "BUG_TRIAGE",
+                f"Reverted to last good commit {last_good[:7]} and working tree clean — not burning retry slot")
+        else:
+            append_progress_log(state["run_id"], "BUG_TRIAGE",
+                f"Reverted to {last_good[:7]} but diff remains — this is a real bug, burning retry slot")
+            state["sanity_retry_count"] = state.get("sanity_retry_count", 0) + 1
     elif diff:
         triage_result["revert_decision"] = "manual_review_needed"
+        # No last_good_commit available but diff exists — generator wrote bad
+        # code and we can't revert. Burn a retry slot.
+        state["sanity_retry_count"] = state.get("sanity_retry_count", 0) + 1
         append_progress_log(state["run_id"], "BUG_TRIAGE",
-            f"Uncommitted changes detected, manual review needed")
+            f"Uncommitted changes + no last_good_commit — burning retry slot; manual review needed")
     else:
         triage_result["revert_decision"] = "no_changes"
-        append_progress_log(state["run_id"], "BUG_TRIAGE", "No uncommitted changes")
+        # No diff at all — sanity failed on a clean tree, treat as real bug.
+        state["sanity_retry_count"] = state.get("sanity_retry_count", 0) + 1
+        append_progress_log(state["run_id"], "BUG_TRIAGE",
+            "Sanity failed on clean tree — burning retry slot (real bug)")
 
     state["triage_result"] = triage_result
-    state["sanity_retry_count"] = state.get("sanity_retry_count", 0) + 1
     state["current_phase"] = "BUG_TRIAGE"
 
     append_decision_log(state["run_id"], {

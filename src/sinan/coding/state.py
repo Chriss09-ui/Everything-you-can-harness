@@ -39,7 +39,6 @@ class CodingState(TypedDict, total=False):
     sanity_pass: Optional[bool]
     implement_result: Optional[dict]
     triage_result: Optional[dict]
-    generator_self_eval: Optional[dict]
     feature_retry_count: int
     sanity_retry_count: int          # caps the sanity_check→bug_triage→sanity_check loop
 
@@ -83,7 +82,6 @@ def make_coding_state(run_id: str, harness_design_draft: dict) -> CodingState:
         sanity_pass=None,
         implement_result=None,
         triage_result=None,
-        generator_self_eval=None,
         feature_retry_count=0,
         sanity_retry_count=0,
         session_progress_count=0,

@@ -79,7 +79,7 @@
                                           ┌──────────────┴──────────────┐
                               (有 feature) │                             │ (无 feature)
                                           ▼                             ▼
-                                  implement_feature             generator_review
+                                  implement_feature             evaluator_qa
                                           │                             │
                                           ▼                             ▼
                                     test_feature                  evaluator_qa
@@ -90,7 +90,7 @@
                             commit_feature                          sprint_complete  evaluator_bugs
                           ┌──────┴───────┐                                ↓             │
                   (剩余)  ↓               ↓ (sprint 完成)        ┌────────┴────────┐    ▼
-                   pick_feature      generator_review         (END)              ↑  generator_fix
+                   pick_feature      evaluator_qa         (END)              ↑  generator_fix
                                                               (spec_complete)    │     │
                                                                           (sprint<10) │  ┌────┴────┐
                                                                        sprint_plan ←──┘  ↓         ↓
@@ -130,11 +130,10 @@
 | 20 | `implement_feature` | Generator | Feature | 写实现文件 |
 | 21 | `test_feature` | Evaluator | Feature | 跑 feature 级测试 |
 | 22 | `commit_feature` | Generator | Feature | 更新 feature_list + git commit |
-| 23 | `generator_review` | Generator | Sprint review | 自我评估 |
-| 24 | `evaluator_qa` | Evaluator | Sprint review | Runner (`main.py` 真跑)+ LLM 综合评分 → `evaluator_grade.json` |
-| 25 | `evaluator_bugs` | Evaluator | Fix | 出 `bug_report.json` |
-| 26 | `generator_fix` | Generator | Fix (≤2 轮) | 修代码 + 自测 |
-| 27 | `sprint_complete` | — (orchestrator) | Sprint (出口) | 出 `sprint_result.json`，判断 END 或下一轮 |
+| 23 | `evaluator_qa` | Evaluator | Sprint review | Runner (`main.py` 真跑)+ LLM 综合评分 → `evaluator_grade.json` |
+| 24 | `evaluator_bugs` | Evaluator | Fix | 出 `bug_report.json` |
+| 25 | `generator_fix` | Generator | Fix (≤2 轮) | 修代码 + 自测 |
+| 26 | `sprint_complete` | — (orchestrator) | Sprint (出口) | 出 `sprint_result.json`，判断 END 或下一轮 |
 
 ---
 
@@ -162,7 +161,7 @@
 |---|---|---|---|
 | `claude-progress.txt` | `harness/` | `init_progress`, `commit_feature` | `read_progress`（每个 session 开头读） |
 | `init.sh` | `harness/` | `init_script` | `session_setup_exit`（运行它） |
-| `feature_list.json` | `harness/` | `init_feature_list`, `commit_feature` | `read_feature_list`, `pick_feature`, `generator_review`, `evaluator_qa`, `_commit_feature_router` |
+| `feature_list.json` | `harness/` | `init_feature_list`, `commit_feature` | `read_feature_list`, `pick_feature`, `evaluator_qa`, `evaluator_qa`, `_commit_feature_router` |
 | `harness/.git/` | `harness/` | `init_git`, `commit_feature`, `bug_triage` | `read_git_log`, `_sprint_complete_router` |
 | `sprint_contract.json` | `runs/<id>/` (versioned) | `sprint_plan`, `sprint_negotiate`, `sprint_setup` | 下一轮 sprint 协商 |
 | `evaluator_grade.json` | `runs/<id>/` (versioned) | `evaluator_qa` | `evaluator_bugs`, `generator_fix` |
@@ -186,9 +185,9 @@
 | `_session_setup_fanout` (L240) | `session_setup_entry` | 无条件 | 4 并行 read |
 | `_sprint_negotiate_router` (L250) | `sprint_negotiate` | `sprint_contract.agreed` / `negotiate_round > 3` | `sprint_setup` / `sprint_plan` |
 | `_sanity_check_router` (L260) | `sanity_check` | `sanity_pass` / `sanity_retry_count ≥ 2` | `pick_feature` / `bug_triage` |
-| `_pick_feature_router` (L268) | `pick_feature` | 有无 `current_feature_id` | `implement_feature` / `generator_review` |
+| `_pick_feature_router` (L268) | `pick_feature` | 有无 `current_feature_id` | `implement_feature` / `evaluator_qa` |
 | `_test_feature_router` (L274) | `test_feature` | `test_result.passed` / `feature_retry_count ≥ 2` | `commit_feature` / `implement_feature` |
-| `_commit_feature_router` (L284) | `commit_feature` | sprint 内还有未完成 feature? | `pick_feature` / `generator_review` |
+| `_commit_feature_router` (L284) | `commit_feature` | sprint 内还有未完成 feature? | `pick_feature` / `evaluator_qa` |
 | `_evaluator_qa_router` (L297) | `evaluator_qa` | `evaluator_grade.overall_pass` | `sprint_complete` / `evaluator_bugs` |
 | `_evaluator_bugs_router` (L304) | `evaluator_bugs` | 总是 | `generator_fix` |
 | `_generator_fix_router` (L308) | `generator_fix` | `fix_result.verified` / `fix_loop_count ≥ 2` | `evaluator_qa` / `generator_fix` |

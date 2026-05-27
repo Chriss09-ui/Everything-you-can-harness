@@ -20,8 +20,8 @@ Artifacts (handoff files):
     git commit            — saves checkpoint
 
 Routes:
-    → pick_feature      when more sprint-scoped features remain
-    → generator_review  when all sprint features done
+    → pick_feature   when more sprint-scoped features remain
+    → evaluator_qa   when all sprint features done
 """
 from __future__ import annotations
 import json

@@ -195,11 +195,13 @@ Routes:
 | Agent | Evaluator |
 | Loop | Session |
 | Reads | `last_good_commit`, `git diff` |
-| Writes | `triage_result`, `sanity_retry_count++` |
-| Artifacts | 可能 `git revert` |
+| Writes | `triage_result`, `sanity_retry_count++` (only when revert fails / no last_good) |
+| Artifacts | 可能 `git reset --hard last_good_commit` |
 | Routes | → `sanity_check` (linear, 不重读文件) |
 
 > **注意**：不再重读上下文文件，直接返回 `sanity_check`。
+> **Retry 计数器规则**：revert 后 diff 干净（恢复成功） → **不**计 retry 配额；
+> revert 后 diff 还在 / 没 last_good_commit / 工作树本来就很干净 → 计 1 次（真 bug）。
 
 ### 19. pick_feature
 
@@ -249,18 +251,7 @@ Routes:
 
 > **交接点：** 写入 `feature_list.json` 是 `pick_feature` 下轮循环的输入契约。
 
-### 23. generator_review
-
-| 属性 | 值 |
-|------|------|
-| Agent | Generator |
-| Loop | Sprint (review) |
-| Reads | `feature_list`, `sprint_contract` |
-| Writes | `generator_self_eval` |
-| Artifacts | (无) |
-| Routes | → `evaluator_qa` (linear) |
-
-### 24. evaluator_qa
+### 23. evaluator_qa
 
 | 属性 | 值 |
 |------|------|

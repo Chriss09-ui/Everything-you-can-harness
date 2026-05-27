@@ -105,9 +105,6 @@ _REQUIRED_FIELDS = {
     "implement_result": {
         "status", "files",
     },
-    "generator_self_eval": {
-        "completion_pct", "self_assessment",
-    },
     "evaluator_grade": {
         "overall_pass", "summary",
     },

@@ -62,6 +62,8 @@ def sprint_complete_node(state: CodingState) -> dict:
 
     # Reset per-sprint counters here (not in the router) — LangGraph only
     # propagates values a node RETURNS, so router-side mutations are dropped.
+    # sprint_contract MUST also be cleared so sprint_plan re-plans the next
+    # sprint instead of reusing sprint 1's agreed contract.
     next_sprint = sprint + 1
     updates = {
         "sprint_result": sprint_result,
@@ -72,6 +74,17 @@ def sprint_complete_node(state: CodingState) -> dict:
         "fix_loop_count": 0,
         "feature_retry_count": 0,
         "sanity_retry_count": 0,
+        "sprint_contract": None,
+        "sprint_plan": None,
+        "sprint_negotiation": None,
+        "evaluator_grade": None,
+        "bug_report": None,
+        "fix_result": None,
+        "current_feature_id": None,
+        "current_feature_status": None,
+        "test_result": None,
+        "implement_result": None,
+        "triage_result": None,
     }
 
     append_progress_log(state["run_id"], "SPRINT_COMPLETE",
