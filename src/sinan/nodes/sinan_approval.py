@@ -33,19 +33,6 @@ from ..state import HarnessBuilderState
 from ..artifacts import append_progress_log, append_decision_log, load_state_or_file
 
 
-# Sections to walk through, in order. Each entry is (section_name, dict_path).
-# dict_path supports dot notation to reach nested fields in harness_design_draft.
-_SECTIONS = [
-    ("一、需求确认", "requirements"),
-    ("二、架构设计", "architecture"),
-    ("三、核心模块设计", "modules"),
-    ("四、治理与安全", "governance"),
-    ("五、设计理念", "design_rationale"),
-    ("六、审查摘要", "reviews"),
-    ("七、风险摘要", "risks"),
-]
-
-
 def sinan_approval_node(state: HarnessBuilderState) -> dict:
     """Walk the user through the full design and collect the approval decision."""
     draft = load_state_or_file(state, "harness_design_draft")
