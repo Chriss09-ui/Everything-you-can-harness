@@ -18,14 +18,29 @@ def test_full_pipeline_mock(monkeypatch):
 
     # Mock input() calls to auto-respond.
     # Provide all four debate answers so the run does not enter the proceed/abort loop.
+    # After the debate answers, sinan_approval walks the user through 7 sections
+    # (each pauses for input) before collecting the final approve/reject/request_changes
+    # decision. Section pauses consume any non-decision input; "approve" lands on the
+    # final decision prompt.
+    #
+    # If sinan_debrief detects unresolved risks, an extra "proceed" is needed (after
+    # the 4 debate answers, before the section pauses).
     inputs = iter([
-        "大约每天10个任务",  # Q1: daily task volume
-        "希望看到完整的架构图和每个节点描述",  # Q2: approval detail level
-        "邮件告警即可",  # Q3: failure notification
-        "两周内可交付",   # Q4: timeline expectation
-        "approve",        # Approval gate: approve
+        "大约每天10个任务",  # Q1
+        "希望看到完整的架构图和每个节点描述",  # Q2
+        "邮件告警即可",  # Q3
+        "两周内可交付",   # Q4
+        "proceed",        # sinan_debrief risk-proceed (only consumed if unresolved_risks)
+        "",  # section pause — requirements
+        "",  # section pause — architecture
+        "",  # section pause — modules
+        "",  # section pause — governance
+        "",  # section pause — rationale
+        "",  # section pause — reviews
+        "",  # section pause — risks
+        "approve",        # Final decision
     ])
-    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs, "done"))
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
 
     run_id = f"test_e2e_{uuid.uuid4().hex[:8]}"
     state = make_initial_state(run_id)
@@ -40,7 +55,8 @@ def test_full_pipeline_mock(monkeypatch):
     assert final["architecture_pack"] is not None
     assert final["architecture_review"] is not None
     assert final["harness_design_draft"] is not None
-    assert final["current_phase"] == "FINAL_SPEC"
+    # sinan_approval ran AFTER final_spec, so current_phase ends on SINAN_APPROVAL.
+    assert final["current_phase"] == "SINAN_APPROVAL"
 
     draft = final["harness_design_draft"]
     assert draft["primary_goal"] != "未定义"

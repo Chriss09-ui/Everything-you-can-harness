@@ -1,7 +1,14 @@
-"""final_spec — 司南 compiles the final Harness Design Draft.
+"""final_spec — 司南 compiles the Harness Design Draft (md + json).
 
 Agent: 司南 (编译者)
-Layer: 架构层 (出口)
+Layer: 架构层 (出口前一站)
+
+NOTE: 本节点在 sinan_approval 之前运行，产出的 md + json 是**待审稿**。
+用户在 sinan_approval 中直接基于这份 md 决策 approve / reject / request_changes：
+- approve → 流程结束
+- reject / request_changes → arch_revise → framework_design 重走辩论 → 重新进 final_spec 重生成
+
+所以 final_spec 在一次 run 里可能被调用多次（每次 reject 重生成一份）。
 
 Reads:
     state["architecture_pack"]  — from zonggong_integrate
@@ -11,16 +18,16 @@ Reads:
     state["subagent_outputs"]  — sub-agent detailed module designs
 
 Writes:
-    state["harness_design_draft"] — final AI-facing design dict
+    state["harness_design_draft"] — AI 代码层可直接解析的结构化设计规范
     state["current_phase"]         — "FINAL_SPEC"
     state["artifact_versions"]     — records harness_design_draft version
 
 Artifacts:
-    harness_design_draft.json  — AI 代码层可直接解析的结构化设计规范 (架构层→研发层交接物)
-    harness_design_final.md    — 人类审核用的可读 Markdown
+    harness_design_draft.json  — 研发层 AI 消费的结构化设计规范（架构层→研发层交接物）
+    harness_design_final.md    — 给用户/审核者阅读的完整设计稿（用户审批时看的就是这份）
 
 Routes:
-    → END
+    → sinan_approval  (linear, 强制用户审批)
 """
 from __future__ import annotations
 import json
@@ -38,11 +45,13 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "FINAL_SPEC")
     append_progress_log(state["run_id"], "FINAL_SPEC", "Compiling final design draft")
 
-    brief = (
-        load_state_or_file(state, "user_brief_form")
-        or load_state_or_file(state, "requirement_pack")
-        or {}
-    )
+    brief = load_state_or_file(state, "user_brief_form")
+    if not brief:
+        raise RuntimeError(
+            "final_spec requires user_brief_form on disk or in state. "
+            "It is the requirement→architecture handoff and brief_compile "
+            "is responsible for producing it (enriched with requirement_pack)."
+        )
     framework = load_state_or_file(state, "framework_design")
     reviews = load_state_or_file(state, "subagent_reviews")
     adjustments = load_state_or_file(state, "framework_adjustments", filename="framework_adjustment.json")
@@ -71,11 +80,11 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     md = _render_markdown(draft, state)
     write_md(state["run_id"], "harness_design_final.md", md)
 
-    append_progress_log(state["run_id"], "FINAL_SPEC", "Final design draft compiled and saved")
+    append_progress_log(state["run_id"], "FINAL_SPEC", "Design draft compiled and saved (pending user approval)")
     append_decision_log(state["run_id"], {
         "phase": "FINAL_SPEC",
-        "type": "final_deliverable",
-        "content": "Harness Design Draft v1.0 generated",
+        "type": "draft_compiled",
+        "content": "Harness Design Draft compiled — awaiting user approval in sinan_approval",
     })
     finalize_phase(state["run_id"])
 
@@ -133,14 +142,18 @@ def _build_ai_draft(
         "run_id": state["run_id"],
 
         # ── Requirements ──
-        "use_case": brief.get("use_case_summary", brief.get("primary_goal", "未定义")),
+        # brief is the enriched user_brief_form; all fields below come from
+        # brief_compile's _enrich_user_brief_form (requirement_pack keys) or
+        # the LLM's own user_brief_form fields. Missing → "未定义"/[]/unknown
+        # is a real failure signal, not a fallback.
+        "use_case": brief.get("use_case_summary", "未定义"),
         "primary_goal": brief.get("primary_goal", "未定义"),
         "scope": {
-            "inclusions": brief.get("scope_inclusions", brief.get("confirmed_requirements", [])),
-            "exclusions": brief.get("scope_exclusions", brief.get("rejected_suggestions", [])),
+            "inclusions": brief.get("scope_inclusions", []),
+            "exclusions": brief.get("scope_exclusions", []),
         },
         "success_criteria": brief.get("success_criteria", []),
-        "constraints": brief.get("known_constraints", brief.get("constraints_final", [])),
+        "constraints": brief.get("known_constraints", []),
         "assumptions": brief.get("assumptions", []),
         "stakeholders": brief.get("stakeholders", []),
         "persona_qualities": brief.get("persona_qualities", []),

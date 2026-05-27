@@ -79,36 +79,38 @@ def _register_all_nodes(g: StateGraph) -> StateGraph:
 
 
 def _wire_architecture_edges(g: StateGraph) -> None:
-    """Wire all architecture-layer edges (shared by full and architecture-only graphs)."""
+    """Wire all architecture-layer edges (shared by full and architecture-only graphs).
+
+    Pipeline after architecture_challenge:
+
+        approval_gate → final_spec → sinan_approval → END
+                                            │
+                                            ↓ (reject)
+                                       arch_revise → framework_design (re-enters debate)
+                                            ↑
+                                       (also the reject path re-enters final_spec after
+                                        the debate regenerates architecture_pack)
+    """
     g.add_edge("framework_design", "subagent_review")
     g.add_edge("subagent_review", "framework_adjust")
     g.add_edge("framework_adjust", "zonggong_integrate")
     g.add_edge("zonggong_integrate", "architecture_challenge")
     g.add_edge("architecture_challenge", "approval_gate")
-    g.add_edge("arch_revise", "framework_design")
-
-    # ── 守门路由：基于 risk_level ──
-    g.add_conditional_edges(
-        "approval_gate",
-        _approval_gate_router,
-        {
-            "sinan_approval": "sinan_approval",
-            "final_spec": "final_spec",
-        },
-    )
+    g.add_edge("approval_gate", "final_spec")         # generate md + json first
+    g.add_edge("final_spec", "sinan_approval")         # then walk user through the md
+    g.add_edge("arch_revise", "framework_design")      # reject → redo debate
 
     # ── 用户审批结果路由 ──
+    # approve → END; reject/request_changes → arch_revise (re-enters framework_design,
+    # which will regenerate architecture_pack and re-enter final_spec for a fresh md).
     g.add_conditional_edges(
         "sinan_approval",
         _approval_outcome_router,
         {
             "arch_revise": "arch_revise",
-            "final_spec": "final_spec",
+            "END": END,
         },
     )
-
-    # ── 终态 ──
-    g.add_edge("final_spec", END)
 
 
 def _wrap(fn):
@@ -118,28 +120,31 @@ def _wrap(fn):
     return wrapper
 
 
-def _approval_gate_router(state: HarnessBuilderState) -> str:
-    """Route based on Shoumen's risk_level: low = auto-pass, else = user approval."""
-    risk_level = state.get("gate_flags", {}).get("risk_level", "high")
-    if risk_level == "low":
-        return "final_spec"
-    return "sinan_approval"
-
-
 def _approval_outcome_router(state: HarnessBuilderState) -> str:
-    """Handle user approval/reject/request_changes outcome."""
+    """Handle user approval/reject/request_changes outcome.
+
+    ``final_spec`` has already run by the time we get here — it generated
+    the md + json before the user was asked. On approve, go straight to END;
+    on reject/request_changes, go to arch_revise (which re-enters
+    framework_design and will regenerate both the architecture_pack and the
+    draft/md via the debate loop → final_spec again).
+
+    ``sinan_approval`` increments ``arch_reject_count`` *before* routing, so
+    the counter is already at N by the time we check it here. Allow up to 3
+    rejections; on the 3rd, raise.
+    """
     payload = state.get("resume_payload") or {}
     choice = payload.get("approval", "")
 
     reject_count = state.get("arch_reject_count", 0)
-    if choice in ("reject", "request_changes") and reject_count >= 2:
+    if choice in ("reject", "request_changes") and reject_count >= 3:
         raise RuntimeError(
             f"Architecture rejected {reject_count} times. "
             "Maximum retry limit reached. Please review the design manually."
         )
 
     if choice == "approve":
-        return "final_spec"
+        return "END"
     return "arch_revise"
 
 
