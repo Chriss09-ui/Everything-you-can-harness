@@ -28,7 +28,7 @@ from sinan.validation import parse_and_validate_artifact, validate_artifact
 from sinan.llm import get_llm_client
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase, get_run_dir,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 
 
@@ -36,16 +36,14 @@ def planner_node(state: CodingState) -> dict:
     update_run_state(state["run_id"], "PLANNER")
     append_progress_log(state["run_id"], "PLANNER", "Expanding design draft into product spec")
 
-    # Prefer state; fall back to disk so the coding layer can run independently
-    # (e.g. via `python -m sinan.cli --from-design <run_id>`).
-    draft = state.get("harness_design_draft") or {}
-    if not draft:
-        draft_path = get_run_dir(state["run_id"]) / "harness_design_draft.json"
-        if draft_path.exists():
-            with open(draft_path, encoding="utf-8") as f:
-                draft = json.load(f)
-            append_progress_log(state["run_id"], "PLANNER",
-                f"Loaded harness_design_draft.json from {draft_path}")
+    # State-or-disk handoff at the design→coding boundary. State is the hot
+    # path inside one CLI invocation; disk is the recovery path for
+    # `python -m sinan.cli --from-design <run_id>`.
+    state_had_draft = bool(state.get("harness_design_draft"))
+    draft = load_state_or_file(state, "harness_design_draft")
+    if draft and not state_had_draft:
+        append_progress_log(state["run_id"], "PLANNER",
+            "Loaded harness_design_draft.json from disk")
 
     # Schema guard at the architecture→coding boundary. We only enforce when
     # the draft carries final_spec's version marker — otherwise it's a hand-

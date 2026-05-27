@@ -35,17 +35,17 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
     append_progress_log(state["run_id"], "FRAMEWORK_DESIGN", "Starting framework design (Round 1)")
 
     client = get_llm_client()
-    brief = (
-        load_state_or_file(state, "user_brief_form")
-        or load_state_or_file(state, "requirement_pack")
-        or {}
-    )
-    # Schema guard at the requirement→architecture boundary.
-    # Skipped if brief is empty (no prior layer ran yet).
-    if brief and "confirmed_requirements" in brief:
-        validate_artifact(brief, "user_brief_form")
-    elif brief and "use_case_summary" in brief:
-        validate_artifact(brief, "requirement_pack")
+    brief = load_state_or_file(state, "user_brief_form")
+    # user_brief_form is the only valid requirement→architecture handoff.
+    # brief_compile enriches it with requirement_pack fields, so downstream
+    # nodes can read either set of keys off this single artifact.
+    if not brief:
+        raise RuntimeError(
+            "framework_design requires user_brief_form. "
+            "Run the requirement layer first, or pass --from-brief <run_id> "
+            "with a runs/<run_id>/user_brief_form.json on disk."
+        )
+    validate_artifact(brief, "user_brief_form")
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
 
     revision_context = _build_revision_context(state)

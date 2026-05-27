@@ -7,12 +7,14 @@
 
 ## 交接协议核心原则
 
-### 原则 1：磁盘文件是 Agent 间的唯一交接协议
+### 原则 1：磁盘文件是跨 Session / 跨层的交接协议
 
-Agent 之间**不通过 state 传递信息**。所有跨 Agent 的信息共享通过文件进行：
+**在单次 graph 调用内**，节点之间用 LangGraph 的 state 传递（`sprint_contract`、`evaluator_grade`、`bug_report` 等）。
+**跨 Session、跨层、崩溃恢复**只能靠 `runs/<run_id>/` 下的文件，因为 state 不持久。
 
 | 阶段 | 写入文件（交出） | 读取文件（接收） |
 |------|-----------------|-----------------|
+| planner | — | `harness_design_draft.json` (设计层→研发层入口，state 空时走 `load_state_or_file()`) |
 | session_init (Sprint 1) | `claude-progress.txt`, `init.sh`, `feature_list.json`, git init | — |
 | session_setup (每轮) | — | `claude-progress.txt`, `feature_list.json`, `git log`, pwd |
 | commit_feature | `feature_list.json`, `claude-progress.txt`, git commit | — |
@@ -23,8 +25,9 @@ Agent 之间**不通过 state 传递信息**。所有跨 Agent 的信息共享�
 | implement_feature | 实现文件 | — |
 | sprint_complete | `sprint_result.json` | — |
 
-> **为什么不用 state？** LangGraph 的 state 在节点间合并，但两个 Session 之间 state 不持久。
-> 文件是跨 Session 恢复上下文的唯一途径。
+> **状态-或-磁盘 helper**：跨层交接（如 planner 读 `harness_design_draft`）统一走 `sinan.artifacts.load_state_or_file()`，
+> 它先读 state、再回退到 `runs/<run_id>/<key>.json`。
+> 跨 Session 的 harness/ 文件（feature_list、claude-progress 等）由对应节点直接读 disk，没有 state 影子。
 
 ### 原则 2：每个 Node 最多做一件事
 

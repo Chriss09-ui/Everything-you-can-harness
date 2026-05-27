@@ -1,4 +1,5 @@
 """Nodes package — import all nodes for convenience."""
+from . import intake
 from . import spec_expansion
 from . import spec_challenge
 from . import brief_debate

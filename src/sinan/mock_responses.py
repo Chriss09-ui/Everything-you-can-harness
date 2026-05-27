@@ -101,7 +101,7 @@ def register_mock_responses() -> None:
 
     # 总工整合 (Architect)
     MockLLMClient.register("请整合以上所有输出，生成完整的 Harness 架构包", json.dumps({
-        "graph_description": "线性状态机: INTAKE → SPEC_EXPANSION → SPEC_CHALLENGE → BRIEF_DEBATE → WAIT_BRIEF → BRIEF_COMPILE → ARCHITECTURE_DRAFT → ARCHITECTURE_CHALLENGE → APPROVAL_GATE → FINAL_SPEC。需求层固定串行，架构层含条件分支。",
+        "graph_description": "线性状态机: INTAKE → SPEC_EXPANSION → SPEC_CHALLENGE → BRIEF_DEBATE → SINAN_DEBRIEF → BRIEF_COMPILE → FRAMEWORK_DESIGN → ARCHITECTURE_CHALLENGE → APPROVAL_GATE → FINAL_SPEC。需求层固定串行，架构层含条件分支。",
         "state_schema_summary": {
             "run_id": "str",
             "current_phase": "str",
@@ -122,12 +122,12 @@ def register_mock_responses() -> None:
             "SPEC_EXPANSION",
             "SPEC_CHALLENGE",
             "BRIEF_DEBATE",
-            "WAIT_BRIEF",
+            "SINAN_DEBRIEF",
             "BRIEF_COMPILE",
-            "ARCHITECTURE_DRAFT",
+            "FRAMEWORK_DESIGN",
             "ARCHITECTURE_CHALLENGE",
             "APPROVAL_GATE",
-            "WAIT_APPROVAL",
+            "SINAN_APPROVAL",
             "FINAL_SPEC"
         ],
         "memory_module": {
@@ -153,8 +153,8 @@ def register_mock_responses() -> None:
             "quality_gates": "低风险自动通过，高风险进入用户审批",
             "user_notification": "当 risk_level != low 时通知用户"
         },
-        "approval_gates": ["WAIT_BRIEF", "APPROVAL_GATE"],
-        "failure_recovery": "架构拒绝最多 2 次，超过后强制停止并输出已有产物。LLM 调用有超时保护和重试机制。",
+        "approval_gates": ["SINAN_DEBRIEF", "APPROVAL_GATE"],
+        "failure_recovery": "架构拒绝最多 3 次，超过后强制停止并输出已有产物。LLM 调用有超时保护和重试机制。",
         "risks_identified": [
             "LLM 输出不稳定可能导致 JSON 解析失败",
             "用户可能在审批环节放弃，导致流程挂起",
@@ -168,9 +168,9 @@ def register_mock_responses() -> None:
         ],
         "subagent_outputs": {
             "framework": {
-                "nodes": ["intake", "spec_expansion", "spec_challenge", "brief_debate", "wait_brief", "brief_compile", "architecture_draft", "architecture_challenge", "approval_gate", "wait_approval", "final_spec"],
-                "edges": [["spec_expansion", "spec_challenge"], ["spec_challenge", "brief_debate"], ["brief_debate", "wait_brief"], ["wait_brief", "brief_compile"], ["brief_compile", "architecture_draft"], ["architecture_draft", "architecture_challenge"], ["architecture_challenge", "approval_gate"]],
-                "conditional_edges": [["approval_gate", "wait_approval"], ["approval_gate", "final_spec"], ["wait_approval", "architecture_draft"], ["wait_approval", "final_spec"]],
+                "nodes": ["intake", "spec_expansion", "spec_challenge", "brief_debate", "sinan_debrief", "brief_compile", "framework_design", "architecture_challenge", "approval_gate", "sinan_approval", "final_spec"],
+                "edges": [["spec_expansion", "spec_challenge"], ["spec_challenge", "brief_debate"], ["brief_debate", "sinan_debrief"], ["sinan_debrief", "brief_compile"], ["brief_compile", "framework_design"], ["framework_design", "architecture_challenge"], ["architecture_challenge", "approval_gate"]],
+                "conditional_edges": [["approval_gate", "sinan_approval"], ["approval_gate", "final_spec"], ["sinan_approval", "framework_design"], ["sinan_approval", "final_spec"]],
                 "entry_point": "spec_expansion",
                 "end_state": "FINAL_SPEC"
             },
@@ -183,7 +183,7 @@ def register_mock_responses() -> None:
                 "retention_policy": "runs/ 目录保留最近 10 次运行，旧运行可手动清理"
             },
             "handoff_protocol": {
-                "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→wait_brief", "brief_compile→architecture_draft", "architecture_draft→architecture_challenge", "architecture_challenge→approval_gate"],
+                "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→sinan_debrief", "brief_compile→framework_design", "framework_design→architecture_challenge", "architecture_challenge→approval_gate"],
                 "context_included": ["requirement_pack", "spec_review", "brief_debate", "user_brief_form", "architecture_pack", "architecture_review"],
                 "state_transfer": "通过 LangGraph state dict 传递，节点返回更新后的 state dict",
                 "error_recovery": "节点失败时重试一次，仍失败则记录错误并输出已有产物",
@@ -240,7 +240,7 @@ def register_mock_responses() -> None:
 
     # 交接协议设计师子 agent
     MockLLMClient.register("你是交接协议设计师", json.dumps({
-        "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→wait_brief", "brief_compile→architecture_draft", "architecture_draft→architecture_challenge", "architecture_challenge→approval_gate"],
+        "handoff_points": ["spec_expansion→spec_challenge", "spec_challenge→brief_debate", "brief_debate→sinan_debrief", "brief_compile→framework_design", "framework_design→architecture_challenge", "architecture_challenge→approval_gate"],
         "context_included": ["requirement_pack", "spec_review", "brief_debate", "user_brief_form", "architecture_pack", "architecture_review"],
         "state_transfer": "通过 LangGraph state dict 传递，节点返回更新后的 state dict",
         "error_recovery": "节点失败时重试一次，仍失败则记录错误并输出已有产物",
@@ -293,7 +293,7 @@ def register_mock_responses() -> None:
     MockLLMClient.register("生成结构化的修订简报", json.dumps({
         "revision_focus": "缩小过度设计、补全 handoff 缺口",
         "must_fix": [
-            "为 wait_brief 增加用户输入格式校验",
+            "为 sinan_debrief 增加用户输入格式校验",
             "为 LLM 调用增加超时保护",
         ],
         "preserve": ["契约化交接", "四步辩论结构"],
@@ -321,7 +321,7 @@ def register_mock_responses() -> None:
             "risk_register 在 V1 中可能过早引入，V1 流程较简单"
         ],
         "handoff_gaps": [
-            "wait_brief 节点的用户输入未做格式验证"
+            "sinan_debrief 节点的用户输入未做格式验证"
         ],
         "eval_gaps": [
             "缺少对 LLM 输出质量的自动评估机制"
