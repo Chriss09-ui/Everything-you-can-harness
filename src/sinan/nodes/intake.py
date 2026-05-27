@@ -26,11 +26,6 @@ def intake_node(state: HarnessBuilderState, user_input: str) -> dict:
     # Pass started_at forward so run_state.yaml's started_at is consistent
     # from the very first phase, not set later by spec_expansion.
     update_run_state(state["run_id"], "INTAKE", started_at=state.get("started_at", ""))
-    state["user_raw_input"] = user_input
-    state["current_phase"] = "INTAKE"
-    # setdefault in case state was constructed outside make_initial_state
-    # (e.g. partial resume), which would leave messages unset → AttributeError.
-    state.setdefault("messages", []).append({"role": "user", "content": user_input})
 
     append_progress_log(state["run_id"], "INTAKE", f"Received user input: {user_input[:80]}...")
     append_decision_log(state["run_id"], {
@@ -39,4 +34,12 @@ def intake_node(state: HarnessBuilderState, user_input: str) -> dict:
         "content": f"User submitted raw input ({len(user_input)} chars)",
     })
 
+    # intake is called externally (cli.py, tests) BEFORE graph.invoke, so we
+    # must return the full state, not a partial — graph.invoke needs run_id,
+    # started_at, etc. to be present. The in-graph nodes downstream of
+    # intake don't run (it's not even registered as a graph node), so the
+    # reducer pattern doesn't apply here; safe to mutate in place.
+    state["user_raw_input"] = user_input
+    state["current_phase"] = "INTAKE"
+    state.setdefault("messages", []).append({"role": "user", "content": user_input})
     return state

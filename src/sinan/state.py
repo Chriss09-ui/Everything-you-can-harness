@@ -71,7 +71,10 @@ class HarnessBuilderState(TypedDict):
     risk_register: Annotated[list[dict], operator.add]
 
     # ── Messages ──
-    messages: list[dict]
+    # Same reducer pattern as risk_register: nodes append via partial return,
+    # not by mutating state["messages"] directly. Safe under any future
+    # fan-out that uses messages.
+    messages: Annotated[list[dict], operator.add]
 
 
 def make_initial_state(run_id: str) -> HarnessBuilderState:

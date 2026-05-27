@@ -63,7 +63,9 @@ class CodingState(TypedDict, total=False):
     # ── Decision log ──
     decision_log: list[dict]
     progress_log: list[dict]
-    messages: list[dict]
+    # Messages uses operator.add reducer so concurrent/partial writes append
+    # instead of overwriting — same pattern as design-layer state.
+    messages: Annotated[list[dict], operator.add]
 
 
 def make_coding_state(run_id: str, harness_design_draft: dict) -> CodingState:
