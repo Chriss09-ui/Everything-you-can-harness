@@ -113,6 +113,44 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     return state
 
 
+def _derive_test_cases(brief: dict) -> list[dict]:
+    """Derive initial test_cases for the harness from the requirement contract.
+
+    Each success_criterion gets a placeholder test case with a stable id and
+    the criterion text echoed back as ``scenario``. The user (in
+    sinan_approval) is expected to flesh out the placeholders; if they accept
+    the placeholders as-is, the runner will use whatever the harness's
+    published main.py consumes as input.
+
+    Schema (per test case):
+        {
+          "id": "tc_<n>",
+          "scenario": "<human description — often the success_criterion>",
+          "input": "...",                 # what to feed the harness via stdin
+          "expected_output_keys": [...],  # required top-level keys in output
+          "expected_to_pass": True        # False ⇒ expects the harness to refuse
+        }
+    """
+    if not brief:
+        return []
+    explicit = brief.get("test_cases")
+    if isinstance(explicit, list) and explicit:
+        # User or upstream has already provided test cases — pass through.
+        return explicit
+
+    success_criteria = brief.get("success_criteria") or []
+    cases = []
+    for idx, criterion in enumerate(success_criteria, 1):
+        cases.append({
+            "id": f"tc_{idx:03d}",
+            "scenario": criterion,
+            "input": "",                  # placeholder — user fills in
+            "expected_output_keys": [],    # placeholder
+            "expected_to_pass": True,
+        })
+    return cases
+
+
 def _build_ai_draft(
     state, brief, framework, subagent_outputs,
     reviews, adjustments, arch_review, arch_pack,
@@ -175,6 +213,7 @@ def _build_ai_draft(
             "exclusions": brief.get("scope_exclusions", []),
         },
         "success_criteria": brief.get("success_criteria", []),
+        "test_cases": _derive_test_cases(brief),
         "constraints": brief.get("known_constraints", []),
         "assumptions": brief.get("assumptions", []),
         "stakeholders": brief.get("stakeholders", []),

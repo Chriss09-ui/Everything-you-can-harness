@@ -49,7 +49,7 @@ def _minimal_harness_design_draft() -> dict:
         "version": "1.0",
         "use_case": "x", "primary_goal": "x",
         "scope": {"inclusions": [], "exclusions": []},
-        "success_criteria": [], "graph": {},
+        "success_criteria": [], "test_cases": [], "graph": {},
         "phase_sequence": [], "memory_module": {},
         "handoff_protocol": {}, "eval_placements": {},
         "state_schema": {},

@@ -266,11 +266,17 @@ Routes:
 |------|------|
 | Agent | Evaluator |
 | Loop | Sprint (review) |
-| Reads | `feature_list` |
+| Reads | `feature_list`, `harness_design_draft.test_cases`（通过 testing.run_qa_eval 读） |
 | Writes | `evaluator_grade` |
 | Artifacts | `evaluator_grade.json` (versioned) |
 | Routes | → `sprint_complete` (pass) / → `evaluator_bugs` (fail) |
 
+> **评测模型：Runner + LLM 双轨**。
+> - `testing.run_qa_eval` 用 `subprocess + timeout(60s)` 真跑 `harness/main.py`，对照每条 test_case 的 `expected_output_keys` 检查 stdout JSON。结果是 ground truth。
+> - 如果 runner 看到 expected_to_pass=True 的用例真的失败了，**强制覆盖** LLM 的 overall_pass=False。
+> - 如果 runner 跑不起来（没 main.py、没 test_cases、超时等），返回中性 `overall_pass=True + runner_results=[]`，**让 LLM 接管评分**，不会触发无限 fix 循环。
+> - Evaluator LLM 拿 runner 报告 + 代码软指标（可读性、模块化、错误处理等）综合打 4 维分。
+>
 > **交接点：** `evaluator_grade.json` 是 `evaluator_bugs` 和 `generator_fix` 的输入契约。
 
 ### 25. evaluator_bugs

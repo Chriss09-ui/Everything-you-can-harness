@@ -252,7 +252,29 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
         rat_lines.append("(无)")
     sections.append(("五、设计理念", rat_lines))
 
-    # 六、审查摘要
+    # 六、测试用例（架构层带下来的，runner 会用这些测试生成的代码）
+    tc_lines = []
+    test_cases = draft.get("test_cases", []) or []
+    if test_cases:
+        tc_lines.append(f"共 {len(test_cases)} 个测试用例（runner 会按这些跑生成的 harness）：")
+        tc_lines.append("")
+        for tc in test_cases:
+            tc_lines.append(f"  · {tc.get('id', '?')}: {tc.get('scenario', '(无描述)')}")
+            user_input = tc.get("input", "")
+            if user_input:
+                tc_lines.append(f"      输入: {user_input[:80]}{'...' if len(str(user_input)) > 80 else ''}")
+            keys = tc.get("expected_output_keys", []) or []
+            if keys:
+                tc_lines.append(f"      期望输出键: {', '.join(keys)}")
+            if not tc.get("expected_to_pass", True):
+                tc_lines.append("      预期: harness 应拒绝/报错")
+        tc_lines.append("")
+        tc_lines.append("（测试用例可在 runs/<run_id>/harness_design_draft.json 编辑后重跑）")
+    else:
+        tc_lines.append("(无 — 研发层将无测试用例可跑，建议在 sinan_approval 之前补全)")
+    sections.append(("六、测试用例", tc_lines))
+
+    # 七、审查摘要
     rev_lines = []
     review_sum = draft.get("subagent_review_summary", {}) or {}
     by_agent = review_sum.get("by_agent", {}) or {}
@@ -286,9 +308,9 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
             rev_lines.append(f"{label} ({len(items)} 条):")
             for it in items[:5]:
                 rev_lines.append(f"  - {it}")
-    sections.append(("六、审查摘要", rev_lines))
+    sections.append(("七、审查摘要", rev_lines))
 
-    # 七、风险摘要
+    # 八、风险摘要
     risk_lines = []
     risks = draft.get("risks_identified", []) or []
     if risks:
@@ -299,6 +321,6 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
                 risk_lines.append(f"  - {r}")
     else:
         risk_lines.append("(无)")
-    sections.append(("七、风险摘要", risk_lines))
+    sections.append(("八、风险摘要", risk_lines))
 
     return sections

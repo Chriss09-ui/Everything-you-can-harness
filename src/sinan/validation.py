@@ -80,7 +80,7 @@ _REQUIRED_FIELDS = {
         # important schema in the whole project. final_spec assembles it
         # from many architecture artifacts; planner consumes it.
         "version", "use_case", "primary_goal", "scope",
-        "success_criteria", "graph", "phase_sequence",
+        "success_criteria", "test_cases", "graph", "phase_sequence",
         "memory_module", "handoff_protocol", "eval_placements",
         "state_schema",
     },

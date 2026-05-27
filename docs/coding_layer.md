@@ -131,7 +131,7 @@
 | 21 | `test_feature` | Evaluator | Feature | 跑 feature 级测试 |
 | 22 | `commit_feature` | Generator | Feature | 更新 feature_list + git commit |
 | 23 | `generator_review` | Generator | Sprint review | 自我评估 |
-| 24 | `evaluator_qa` | Evaluator | Sprint review | QA 评分 → `evaluator_grade.json` |
+| 24 | `evaluator_qa` | Evaluator | Sprint review | Runner (`main.py` 真跑)+ LLM 综合评分 → `evaluator_grade.json` |
 | 25 | `evaluator_bugs` | Evaluator | Fix | 出 `bug_report.json` |
 | 26 | `generator_fix` | Generator | Fix (≤2 轮) | 修代码 + 自测 |
 | 27 | `sprint_complete` | — (orchestrator) | Sprint (出口) | 出 `sprint_result.json`，判断 END 或下一轮 |
@@ -243,7 +243,7 @@
 | [src/sinan/coding/nodes/](../src/sinan/coding/nodes/) | 27 个 node 模块 |
 | [src/sinan/coding/prompts.py](../src/sinan/coding/prompts.py) | Planner / Generator / Evaluator / Initializer / Negotiator prompts |
 | [src/sinan/coding/git.py](../src/sinan/coding/git.py) | `git init / add / commit / log / revert` 封装 |
-| [src/sinan/coding/testing.py](../src/sinan/coding/testing.py) | E2E test 抽象（Playwright + fallback） |
+| [src/sinan/coding/testing.py](../src/sinan/coding/testing.py) | **Runner**：subprocess + 60s timeout 跑 `harness/main.py`，对照 design_draft.test_cases 评分 |
 | [src/sinan/coding/mock_responses.py](../src/sinan/coding/mock_responses.py) | mock 输出 |
 | [src/sinan/coding/parse_json.py](../src/sinan/coding/parse_json.py) | 容错 JSON 解析 |
 

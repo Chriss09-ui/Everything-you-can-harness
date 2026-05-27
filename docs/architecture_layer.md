@@ -91,6 +91,9 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 ### 出口
 - `runs/<run_id>/harness_design_draft.json` — **研发层的输入**（落盘是契约，state 是热路径）。**versioned 写入**：每次重跑都自动归档为 `harness_design_draft_v1.json` / `_v2.json` ... 可回滚 / 可 diff。
+
+  **关键字段：`test_cases`** — 一组测试用例（id / scenario / input / expected_output_keys / expected_to_pass），由 `final_spec` 从 `success_criteria` 推导出占位骨架。研发层的 `evaluator_qa` 会用 `subprocess + timeout(60s)` 真跑 `harness/main.py` 对照这组用例打分。用户在 `sinan_approval` 阶段能看到、并能编辑 `harness_design_draft.json` 把占位补全。
+
 - `runs/<run_id>/harness_design_final.md` — 给用户/审核者阅读的完整设计稿。**`sinan_approval` 就是带用户过这份 md**；用户决策依据的就是这份文档。
 
 > 两个出口都在 `final_spec` 节点产出——这节点在 `sinan_approval` 之前运行。
