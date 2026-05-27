@@ -23,7 +23,6 @@ class HarnessBuilderState(TypedDict):
 
     # ── User Input ──
     user_raw_input: str
-    user_supplements: list[Optional[str]]
     # user_brief_answers defaults to None so load_state_or_file can distinguish
     # "sinan_debrief hasn't run yet" (None → fall back to disk) from
     # "sinan_debrief ran but the user skipped every question" ([] → use []).
@@ -74,7 +73,6 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
         started_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         current_phase="INTAKE",
         user_raw_input="",
-        user_supplements=[],
         user_brief_answers=None,
         requirement_pack=None,
         spec_review=None,

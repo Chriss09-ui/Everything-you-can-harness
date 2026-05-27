@@ -7,7 +7,6 @@ Reads:
     state["brief_debate"]  — debate result with user_questions
 
 Writes:
-    state["user_supplements"]    — raw answer list
     state["user_brief_answers"]  — structured answer records
     state["pending_interrupt"]   — reset to None
     state["current_phase"]       — "WAIT_USER_BRIEF"
@@ -103,7 +102,6 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     skipped = sum(1 for a in answers if a is None)
     unresolved_risks = len(remaining) > 0 or skipped > 0
 
-    state["user_supplements"] = answers
     state["user_brief_answers"] = answer_records
     state["pending_interrupt"] = None
     state["current_phase"] = "SINAN_DEBRIEF"

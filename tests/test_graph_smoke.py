@@ -85,7 +85,7 @@ def test_state_schema_fields():
     state: HarnessBuilderState = make_initial_state("test_run_003")
     required_fields = [
         "run_id", "started_at", "current_phase",
-        "user_raw_input", "user_supplements", "user_brief_answers",
+        "user_raw_input", "user_brief_answers",
         "requirement_pack", "spec_review", "user_brief_form",
         "architecture_pack", "architecture_review", "harness_design_draft",
         "gate_flags", "decision_log", "progress_log",
