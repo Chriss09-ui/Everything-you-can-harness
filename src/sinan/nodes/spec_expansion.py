@@ -25,7 +25,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase,
 )
-from ..validation import parse_and_validate_artifact, parse_llm_json
+from ..validation import parse_and_validate_artifact
 
 
 def spec_expansion_node(state: HarnessBuilderState) -> dict:
@@ -54,8 +54,3 @@ def spec_expansion_node(state: HarnessBuilderState) -> dict:
     finalize_phase(state["run_id"])
 
     return state
-
-
-def _parse_json(raw: str, artifact_name: str) -> dict:
-    """Compatibility wrapper for nodes outside the strict requirement layer."""
-    return parse_llm_json(raw, artifact_name)

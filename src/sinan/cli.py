@@ -24,6 +24,7 @@ from sinan.artifacts import (
     ensure_run_dir, get_run_dir, append_progress_log, append_decision_log,
     update_run_state,
 )
+from sinan.validation import validate_artifact
 from sinan.nodes.intake import intake_node
 from sinan.mock_responses import register_mock_responses
 from sinan.coding.state import make_coding_state
@@ -64,8 +65,16 @@ def main():
             print(f"找不到设计稿: {draft_path}")
             print("请先跑完整流程，或检查 run_id 是否正确。")
             sys.exit(1)
+        with open(draft_path, encoding="utf-8") as f:
+            draft = json.load(f)
+        try:
+            validate_artifact(draft, "harness_design_draft")
+        except ValueError as e:
+            print(f"设计稿 schema 校验失败，无法恢复: {e}")
+            print("请重新跑完整流程以生成合法的设计稿。")
+            sys.exit(1)
         print(f"从 run_id={run_id} 的设计稿恢复，跳过设计层。")
-        _run_coding_layer(run_id, harness_draft={})
+        _run_coding_layer(run_id, harness_draft=draft)
         return
 
     if args.from_brief:
@@ -74,6 +83,14 @@ def main():
         if not brief_path.exists():
             print(f"找不到需求契约: {brief_path}")
             print("请先跑过需求层一次，或检查 run_id 是否正确。")
+            sys.exit(1)
+        with open(brief_path, encoding="utf-8") as f:
+            brief = json.load(f)
+        try:
+            validate_artifact(brief, "user_brief_form")
+        except ValueError as e:
+            print(f"需求契约 schema 校验失败: {e}")
+            print("请重新跑需求层以生成合法契约。")
             sys.exit(1)
         print(f"从 run_id={run_id} 的需求契约恢复，跳过需求层。")
         _run_architecture_then_coding(run_id, brief_path)

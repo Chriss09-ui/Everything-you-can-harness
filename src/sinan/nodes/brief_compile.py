@@ -21,12 +21,13 @@ Routes:
 """
 from __future__ import annotations
 import json
+from datetime import datetime, timezone
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from ..validation import parse_and_validate_artifact
 
@@ -52,9 +53,9 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
     client = get_llm_client()
     system = get_prompt("qiyue")
 
-    rp = state.get("requirement_pack") or {}
-    debate = state.get("brief_debate") or {}
-    answers = state.get("user_brief_answers") or []
+    rp = load_state_or_file(state, "requirement_pack")
+    debate = load_state_or_file(state, "brief_debate")
+    answers = load_state_or_file(state, "user_brief_answers", default=[]) or []
     questions = debate.get("user_questions", [])
 
     # 合并问题和答案
@@ -87,6 +88,11 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     brief = parse_and_validate_artifact(raw, "user_brief_form")
     brief = _enrich_user_brief_form(brief, rp)
+    brief.setdefault(
+        "sign_off_timestamp",
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
+    brief.setdefault("brief_version", "1.0")
 
     write_json(state["run_id"], "user_brief_form.json", brief)
     state["user_brief_form"] = brief

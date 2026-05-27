@@ -25,7 +25,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from ..validation import parse_and_validate_artifact
 
@@ -36,7 +36,8 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
 
     client = get_llm_client()
     system = get_prompt("jiewen")
-    rp_json = json.dumps(state.get("requirement_pack") or {}, indent=2, ensure_ascii=False)
+    rp = load_state_or_file(state, "requirement_pack")
+    rp_json = json.dumps(rp, indent=2, ensure_ascii=False)
     user = f"以下是 Requirement Pack，请进行批判性审查:\n\n{rp_json}"
 
     raw = client.generate(system, user)
@@ -48,10 +49,18 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
     state["artifact_versions"]["spec_review"] = "1.0"
 
     score = review.get("challenge_score", 0)
-    flagged = [a["item"] for a in review.get("ambiguities", [])]
-    state["risk_register"].extend([
-        {"type": "ambiguity", "item": a["item"], "risk": a.get("risk_if_unaddressed", "")}
-        for a in review.get("ambiguities", [])
+    ambiguities = review.get("ambiguities", []) or []
+    # Tolerate malformed entries: top-level schema doesn't enforce inner shape,
+    # so an LLM may produce an ambiguity dict without the "item" field.
+    flagged = [a.get("item", "") for a in ambiguities if isinstance(a, dict)]
+    risk_register = state.setdefault("risk_register", [])
+    risk_register.extend([
+        {
+            "type": "ambiguity",
+            "item": a.get("item", ""),
+            "risk": a.get("risk_if_unaddressed", ""),
+        }
+        for a in ambiguities if isinstance(a, dict)
     ])
 
     append_progress_log(state["run_id"], "SPEC_CHALLENGE", f"Review complete, score={score}")

@@ -59,8 +59,20 @@ def sprint_complete_node(state: CodingState) -> dict:
 
     validate_artifact(sprint_result, "sprint_result")
     write_json(state["run_id"], "sprint_result.json", sprint_result, versioned=True)
-    state["sprint_result"] = sprint_result
-    state["current_phase"] = "SPRINT_COMPLETE"
+
+    # Reset per-sprint counters here (not in the router) — LangGraph only
+    # propagates values a node RETURNS, so router-side mutations are dropped.
+    next_sprint = sprint + 1
+    updates = {
+        "sprint_result": sprint_result,
+        "current_phase": "SPRINT_COMPLETE",
+        "sprint_number": next_sprint,
+        "session_number": 1,
+        "negotiate_round": 1,
+        "fix_loop_count": 0,
+        "feature_retry_count": 0,
+        "sanity_retry_count": 0,
+    }
 
     append_progress_log(state["run_id"], "SPRINT_COMPLETE",
         f"Sprint {sprint}: {len(passing)}/{total} features done, {'SPEC COMPLETE' if sprint_result['spec_complete'] else 'more sprints needed'}")
@@ -72,4 +84,5 @@ def sprint_complete_node(state: CodingState) -> dict:
     })
     finalize_phase(state["run_id"])
 
+    state.update(updates)
     return state

@@ -8,10 +8,8 @@ class GateFlags(TypedDict, total=False):
     challenge_passed: bool
     architecture_passed: bool
     needs_user_brief: bool
-    needs_user_approval: bool
     risk_level: str
     flagged_risks: list[str]
-    arch_reject_count: int
     shoumen_reasoning: str
     key_concerns: list[str]
     checklist: dict
@@ -91,9 +89,7 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
             challenge_passed=False,
             architecture_passed=False,
             needs_user_brief=False,
-            needs_user_approval=False,
             flagged_risks=[],
-            arch_reject_count=0,
         ),
         decision_log=[],
         progress_log=[],

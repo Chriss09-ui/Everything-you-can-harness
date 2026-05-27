@@ -24,7 +24,7 @@ import json
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
 from ..prompts import get_prompt
-from ..artifacts import append_progress_log, append_decision_log, finalize_phase
+from ..artifacts import append_progress_log, append_decision_log, finalize_phase, load_state_or_file
 
 
 def sinan_debrief_node(state: HarnessBuilderState) -> dict:
@@ -35,7 +35,7 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     client = get_llm_client()
     system = get_prompt("sinan_interact")
 
-    debate = state.get("brief_debate") or {}
+    debate = load_state_or_file(state, "brief_debate")
     prompt_data = {
         "run_id": state["run_id"],
         "current_phase": state.get("current_phase", "unknown"),
@@ -103,8 +103,7 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     state["user_supplements"] = answers
     state["user_brief_answers"] = answer_records
     state["pending_interrupt"] = None
-    state["interrupted_by"] = "user"
-    state["current_phase"] = "WAIT_USER_BRIEF"
+    state["current_phase"] = "SINAN_DEBRIEF"
 
     if unresolved_risks:
         print("\n" + "!" * 60)
@@ -134,7 +133,9 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
                 "rationale": f"{len(remaining)} disagreements, {skipped} skipped",
                 "risks": remaining,
             })
-            raise KeyboardInterrupt("用户选择退出：辩论中存在未解决的关键分歧。")
+            raise SystemExit(
+                "用户选择退出：辩论中存在未解决的关键分歧。"
+            )
 
         append_decision_log(state["run_id"], {
             "phase": "SINAN_DEBRIEF",
@@ -170,14 +171,11 @@ def _parse_response(raw: str) -> dict:
         lines = text.split("\n")
         text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {
-            "display": {
-                "header": "辩论已完成，请回答以下问题",
-                "aligned_points": [],
-                "remaining_disagreements": [],
-                "user_questions": [],
-                "question_instruction": "请逐条回答：",
-            }
-        }
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        # Never silently short-circuit the user gate. Surface the failure so
+        # the caller (and the run's decision log) can see what happened.
+        raise ValueError(f"Failed to parse sinan_debrief LLM response: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("sinan_debrief LLM response is not a JSON object")
+    return data

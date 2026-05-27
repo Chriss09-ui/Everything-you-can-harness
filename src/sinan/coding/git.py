@@ -68,14 +68,15 @@ def git_log(run_id: str, n: int = 5) -> str:
 
 
 def git_revert(run_id: str, ref: str) -> str:
-    """Revert to the given git ref (commit hash or branch)."""
-    result = _run_git(run_id, "revert", "--no-commit", ref)
-    msg = result.stdout.strip() or result.stderr.strip()
-    _run_git(run_id, "revert", "--abort")  # abort the revert merge, just check status
-    # Actually do a reset instead
+    """Reset the harness working tree to the given ref.
+
+    Despite the legacy name, this performs ``git reset --hard <ref>`` —
+    a destructive operation that discards uncommitted changes. Callers
+    must pass an explicit, validated ref (typically ``last_good_commit``).
+    """
     result = _run_git(run_id, "reset", "--hard", ref)
-    msg = result.stdout.strip()
-    append_progress_log(run_id, "GIT", f"Reverted to {ref}: {msg}")
+    msg = result.stdout.strip() or result.stderr.strip()
+    append_progress_log(run_id, "GIT", f"Reset to {ref}: {msg}")
     return msg
 
 

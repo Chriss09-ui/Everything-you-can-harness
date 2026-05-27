@@ -49,7 +49,7 @@ def evaluator_bugs_node(state: CodingState) -> dict:
     validate_artifact(bug_report, "bug_report")
     write_json(state["run_id"], "bug_report.json", bug_report, versioned=True)
     state["bug_report"] = bug_report
-    state["fix_loop_count"] = state.get("fix_loop_count", 0) + 1
+    # fix_loop_count is incremented by generator_fix_node per fix attempt.
     state["current_phase"] = "EVALUATOR_BUGS"
 
     append_progress_log(state["run_id"], "EVALUATOR_BUGS",

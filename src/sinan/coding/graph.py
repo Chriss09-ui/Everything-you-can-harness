@@ -328,12 +328,7 @@ def _sprint_complete_router(state: CodingState) -> str:
             f"Please review the generated code manually."
         )
 
-    state["sprint_number"] = sprint_num + 1
-    state["session_number"] = 1
-    state["negotiate_round"] = 1
-    state["fix_loop_count"] = 0
-    state["feature_retry_count"] = 0
-    state["sanity_retry_count"] = 0
+    # Counters are reset by sprint_complete_node; router is read-only.
     return "sprint_plan"
 
 

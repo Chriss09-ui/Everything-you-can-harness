@@ -68,7 +68,7 @@ def test_initial_state():
     assert state["run_id"] == "test_run_001"
     assert state["started_at"]
     assert state["current_phase"] == "INTAKE"
-    assert state["gate_flags"]["arch_reject_count"] == 0
+    assert state["arch_reject_count"] == 0  # top-level field; gate_flags copy was removed
 
 
 def test_intake_node():

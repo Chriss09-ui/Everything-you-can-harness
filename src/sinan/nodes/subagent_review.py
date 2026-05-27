@@ -32,14 +32,6 @@ from ..artifacts import (
 from ..validation import parse_llm_json, parse_and_validate_artifact
 
 
-# 子代理配置
-SUB_AGENTS = [
-    {"name": "memory", "role": "记忆模块设计师", "prompt_key": "zonggong_memory"},
-    {"name": "handoff", "role": "交接协议设计师", "prompt_key": "zonggong_handoff"},
-    {"name": "eval", "role": "评估专家", "prompt_key": "zonggong_eval"},
-]
-
-
 def subagent_review_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "SUBAGENT_REVIEW")
     append_progress_log(state["run_id"], "SUBAGENT_REVIEW", "Starting sub-agent reviews of framework")
