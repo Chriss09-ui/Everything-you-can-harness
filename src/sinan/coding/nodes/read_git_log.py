@@ -7,7 +7,6 @@ Reads:
     state["run_id"]
 
 Writes:
-    state["messages"]                           — appends git history message
     state["session_context"]["git_history"]  — history string (via reducer merge)
 
 Artifacts:
@@ -15,6 +14,12 @@ Artifacts:
 
 Routes:
     → session_setup_exit  (linear, fan-in to coordinator)
+
+Note: this node feeds git history into ``session_context`` so that
+session_setup_exit can later append it as a system message onto
+state["messages"]. The actual messages-write happens consolidated in
+the fan-in node, not here — see session_setup_exit for the rationale
+(four readers shouldn't all four write messages concurrently).
 """
 from __future__ import annotations
 from ..state import CodingState

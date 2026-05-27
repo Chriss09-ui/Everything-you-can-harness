@@ -7,12 +7,14 @@
 
 ## 交接协议核心原则
 
-### 原则 1：磁盘文件是 Agent 间的唯一交接协议
+### 原则 1：磁盘文件是跨 Session / 跨层的交接协议
 
-Agent 之间**不通过 state 传递信息**。所有跨 Agent 的信息共享通过文件进行：
+**在单次 graph 调用内**，节点之间用 LangGraph 的 state 传递（`sprint_contract`、`evaluator_grade`、`bug_report` 等）。
+**跨 Session、跨层、崩溃恢复**只能靠 `runs/<run_id>/` 下的文件，因为 state 不持久。
 
 | 阶段 | 写入文件（交出） | 读取文件（接收） |
 |------|-----------------|-----------------|
+| planner | — | `harness_design_draft.json` (设计层→研发层入口，state 空时走 `load_state_or_file()`) |
 | session_init (Sprint 1) | `claude-progress.txt`, `init.sh`, `feature_list.json`, git init | — |
 | session_setup (每轮) | — | `claude-progress.txt`, `feature_list.json`, `git log`, pwd |
 | commit_feature | `feature_list.json`, `claude-progress.txt`, git commit | — |
@@ -23,8 +25,9 @@ Agent 之间**不通过 state 传递信息**。所有跨 Agent 的信息共享�
 | implement_feature | 实现文件 | — |
 | sprint_complete | `sprint_result.json` | — |
 
-> **为什么不用 state？** LangGraph 的 state 在节点间合并，但两个 Session 之间 state 不持久。
-> 文件是跨 Session 恢复上下文的唯一途径。
+> **状态-或-磁盘 helper**：跨层交接（如 planner 读 `harness_design_draft`）统一走 `sinan.artifacts.load_state_or_file()`，
+> 它先读 state、再回退到 `runs/<run_id>/<key>.json`。
+> 跨 Session 的 harness/ 文件（feature_list、claude-progress 等）由对应节点直接读 disk，没有 state 影子。
 
 ### 原则 2：每个 Node 最多做一件事
 
@@ -65,7 +68,7 @@ Routes:
 
 ---
 
-## 27 Node 合约
+## 26 Node 合约
 
 ### 1. planner
 
@@ -192,11 +195,13 @@ Routes:
 | Agent | Evaluator |
 | Loop | Session |
 | Reads | `last_good_commit`, `git diff` |
-| Writes | `triage_result`, `sanity_retry_count++` |
-| Artifacts | 可能 `git revert` |
+| Writes | `triage_result`, `sanity_retry_count++` (only when revert fails / no last_good) |
+| Artifacts | 可能 `git reset --hard last_good_commit` |
 | Routes | → `sanity_check` (linear, 不重读文件) |
 
 > **注意**：不再重读上下文文件，直接返回 `sanity_check`。
+> **Retry 计数器规则**：revert 后 diff 干净（恢复成功） → **不**计 retry 配额；
+> revert 后 diff 还在 / 没 last_good_commit / 工作树本来就很干净 → 计 1 次（真 bug）。
 
 ### 19. pick_feature
 
@@ -207,7 +212,7 @@ Routes:
 | Reads | `feature_list`, `sprint_contract` |
 | Writes | `current_feature_id`, `current_feature_status`, `feature_retry_count=0` |
 | Artifacts | (无) |
-| Routes | → `implement_feature` (有 feature) / → `generator_review` (无 feature) |
+| Routes | → `implement_feature` (有 feature) / → `evaluator_qa` (无 feature) |
 
 ### 20. implement_feature
 
@@ -240,34 +245,31 @@ Routes:
 | Agent | Generator |
 | Loop | Feature |
 | Reads | `current_feature_id`, `feature_list` |
-| Writes | `feature_list` (更新 passes=true), `current_feature_id=None` |
+| Writes | `feature_list` (更新 passes/blocked), `current_feature_id=None` |
 | Artifacts | `feature_list.json`, `claude-progress.txt`, git commit |
-| Routes | → `pick_feature` (有剩余) / → `generator_review` (sprint 完成) |
+| Routes | → `pick_feature` (有剩余) / → `evaluator_qa` (sprint 完成) |
 
 > **交接点：** 写入 `feature_list.json` 是 `pick_feature` 下轮循环的输入契约。
+> 测试通过标 `passes=True`；retry 用尽仍失败则标 `blocked=True, passes=False` —— 代码仍 git-commit 保
+> 留进度，但 `sprint_complete` 不会把 blocked 计入"完成"，`pick_feature` 在本 sprint 内不再选它。
 
-### 23. generator_review
-
-| 属性 | 值 |
-|------|------|
-| Agent | Generator |
-| Loop | Sprint (review) |
-| Reads | `feature_list`, `sprint_contract` |
-| Writes | `generator_self_eval` |
-| Artifacts | (无) |
-| Routes | → `evaluator_qa` (linear) |
-
-### 24. evaluator_qa
+### 23. evaluator_qa
 
 | 属性 | 值 |
 |------|------|
 | Agent | Evaluator |
 | Loop | Sprint (review) |
-| Reads | `feature_list` |
+| Reads | `feature_list`, `harness_design_draft.test_cases`（通过 testing.run_qa_eval 读） |
 | Writes | `evaluator_grade` |
 | Artifacts | `evaluator_grade.json` (versioned) |
 | Routes | → `sprint_complete` (pass) / → `evaluator_bugs` (fail) |
 
+> **评测模型：Runner + LLM 双轨**。
+> - `testing.run_qa_eval` 用 `subprocess + timeout(60s)` 真跑 `harness/main.py`，对照每条 test_case 的 `expected_output_keys` 检查 stdout JSON。结果是 ground truth。
+> - 如果 runner 看到 expected_to_pass=True 的用例真的失败了，**强制覆盖** LLM 的 overall_pass=False。
+> - 如果 runner 跑不起来（没 main.py、没 test_cases、超时等），返回中性 `overall_pass=True + runner_results=[]`，**让 LLM 接管评分**，不会触发无限 fix 循环。
+> - Evaluator LLM 拿 runner 报告 + 代码软指标（可读性、模块化、错误处理等）综合打 4 维分。
+>
 > **交接点：** `evaluator_grade.json` 是 `evaluator_bugs` 和 `generator_fix` 的输入契约。
 
 ### 25. evaluator_bugs
@@ -277,7 +279,7 @@ Routes:
 | Agent | Evaluator |
 | Loop | Fix |
 | Reads | `evaluator_grade` |
-| Writes | `bug_report`, `fix_loop_count++` |
+| Writes | `bug_report` |
 | Artifacts | `bug_report.json` (versioned) |
 | Routes | → `generator_fix` (always) |
 

@@ -11,7 +11,6 @@ from . import pick_feature
 from . import implement_feature
 from . import test_feature
 from . import commit_feature
-from . import generator_review
 from . import evaluator_qa
 from . import evaluator_bugs
 from . import generator_fix

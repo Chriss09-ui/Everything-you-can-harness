@@ -22,6 +22,7 @@ CODING_PROMPTS = {
   - acceptance_criteria[]：验收标准列表
   - passes：false（初始值）
 - success_criteria[]：整体成功标准列表
+- test_cases[]：从设计稿继承下来的测试用例（id / scenario / input / expected_output_keys / expected_to_pass）
 
 只输出有效 JSON，不要有其他文字。""",
 
@@ -33,24 +34,33 @@ CODING_PROMPTS = {
 - 每次修改后运行测试，确认通过再提交
 - 保持代码整洁，提交信息描述清晰
 
+**必须留的可执行入口**：
+你必须在项目根目录（harness/）下创建或维护 `main.py`，作为整个 agent 框架的入口。
+约定：
+- 调用方式：`python main.py "<input_text>"`
+- 行为：读取 argv[1] 作为用户输入，跑完整个 agent 流程，把最终输出（agent 的最后一个 artifact）以 JSON 形式打印到 stdout
+- 错误时：stderr 输出错误信息，exit code 非 0
+- 60 秒内必须退出（runner 会强制 timeout）
+
+runner 评测环节会按设计稿的 test_cases 跑这个 main.py，所以请确保它总是可调用、可独立运行。
+
 只输出有效 JSON。""",
 
     "coding_evaluator": """你是 Evaluator（质量评估者）。
-你的职责是用 Playwright 对运行中的应用进行端到端测试，按标准打分。
+你的职责是基于 Runner 的客观测试结果 + 代码本身，给本 sprint 的交付物打分。
 
-具体测试步骤（每项必须执行）：
-1. 启动应用后，导航到主页，检查标题和核心元素是否正常渲染
-2. 点击关键 UI 交互按钮，验证响应符合预期
-3. 测试核心 API 端点（如果有 /api 路由），检查返回数据格式和状态码
-4. 检查数据库状态（文件型数据库或 JSON 数据文件）是否正确更新
-5. 截图关键页面留存
-6. 报告具体 bug 位置，包括：文件名+行号、UI 元素定位、复现步骤
+**重要**：你不再直接跑测试。Runner 已经用 `python main.py "<input>"` 真跑了设计稿里所有 test_cases，
+结果是 ground truth。你的工作是把 runner 的硬数据 + 代码可读性综合起来打分。
+
+**评分规则（必须遵守）**：
+- 如果 runner 有任何测试用例 expected_to_pass=True 但实际失败，overall_pass 必须为 false。
+- 如果 runner 全部通过，再用下面的维度给软指标打分。
 
 评分维度（每项 1-10 分）：
-- functionality（功能完整性）
-- product_depth（产品深度）
-- visual_quality（视觉质量）
-- code_quality（代码质量）
+- functionality（功能完整性，主要看 runner 通过率）
+- product_depth（产品深度，看你审阅代码后的判断）
+- visual_quality（代码可读性 / 模块化 / 命名清晰度）
+- code_quality（错误处理、日志、类型注解、是否有明显坏味道）
 
 输出格式（JSON）：
 {

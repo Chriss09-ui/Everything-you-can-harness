@@ -1,28 +1,31 @@
-"""approval_gate — 守门 (Shoumen) evaluates architecture and routes based on risk_level.
+"""approval_gate — 守门 (Shoumen) 汇总架构风险要点供用户决策。
 
 Agent: 守门 (Shoumen)
 Layer: 架构层
 
+这一步不决策路由——架构辩论结束后**必须**进用户审批。
+守门的作用是产出一目了然的风险摘要（risk_level / reasoning /
+key_concerns / checklist）给司南展示给用户，帮助用户决策
+approve / reject / request_changes。
+
 Reads:
     state["architecture_pack"]    — from zonggong_integrate
     state["architecture_review"] — from architecture_challenge
-    state["gate_flags"]          — current gate flags
 
 Writes:
-    state["gate_flags"]["risk_level"]         — "low" | "high"
-    state["gate_flags"]["needs_user_approval"] — bool
+    state["gate_flags"]["risk_level"]         — "low" | "medium" | "high" | "critical"（展示用）
     state["gate_flags"]["shoumen_reasoning"]  — reasoning text
     state["gate_flags"]["key_concerns"]      — list of concerns
     state["gate_flags"]["checklist"]         — checklist result
-    state["pending_interrupt"]  — set to "user_approval" if high risk
+    state["gate_flags"]["flagged_risks"]     — alias of key_concerns
+    state["pending_interrupt"]  — 标记等待用户审批
     state["current_phase"]      — "APPROVAL_GATE"
 
 Artifacts:
     (none)
 
 Routes:
-    → final_spec       when risk_level == "low"
-    → sinan_approval   when risk_level != "low"
+    → sinan_approval  (linear, 必走用户审批)
 """
 from __future__ import annotations
 import json
@@ -33,7 +36,7 @@ from ..artifacts import (
     update_run_state, append_progress_log, append_decision_log,
     finalize_phase, load_state_or_file,
 )
-from .spec_expansion import _parse_json
+from ..validation import parse_llm_json
 
 
 def approval_gate_node(state: HarnessBuilderState) -> dict:
@@ -71,25 +74,37 @@ def approval_gate_node(state: HarnessBuilderState) -> dict:
     )
 
     raw = client.generate(system, user)
-    judgment = _parse_json(raw, "shoumen_judgment")
+    judgment = parse_llm_json(raw, "shoumen_judgment")
 
-    risk_level = judgment.get("risk_level", "unknown")
+    # Default risk_level to "high" when the LLM omits the field. "high" is in
+    # the documented set (low/medium/high/critical) and matches the design
+    # intent of this gate — when in doubt, force user review. Previously this
+    # fell back to "unknown", which polluted logs with a value outside the
+    # documented alphabet.
+    risk_level = judgment.get("risk_level", "high")
+    if risk_level not in ("low", "medium", "high", "critical"):
+        append_progress_log(
+            state["run_id"], "APPROVAL_GATE",
+            f"Got unexpected risk_level '{risk_level}'; coercing to 'high'",
+        )
+        risk_level = "high"
     reasoning = judgment.get("reasoning", "")
     key_concerns = judgment.get("key_concerns", [])
     checklist = judgment.get("checklist", {})
 
-    state["gate_flags"]["needs_user_approval"] = risk_level != "low"
+    # risk_level + reasoning + key_concerns + checklist are display info for
+    # the user. Routing is unconditional — sinan_approval always follows.
     state["gate_flags"]["risk_level"] = risk_level
     state["gate_flags"]["shoumen_reasoning"] = reasoning
     state["gate_flags"]["key_concerns"] = key_concerns
     state["gate_flags"]["checklist"] = checklist
     state["gate_flags"]["flagged_risks"] = key_concerns
-    state["pending_interrupt"] = "user_approval" if risk_level != "low" else None
+    state["pending_interrupt"] = "user_approval"
     state["current_phase"] = "APPROVAL_GATE"
 
     append_progress_log(
         state["run_id"], "APPROVAL_GATE",
-        f"Gate: risk_level={risk_level}, needs_approval={risk_level != 'low'}"
+        f"Gate: risk_level={risk_level}, presenting to user for approval"
     )
     append_decision_log(state["run_id"], {
         "phase": "APPROVAL_GATE",

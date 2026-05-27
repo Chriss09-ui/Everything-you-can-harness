@@ -39,6 +39,13 @@ def init_progress_node(state: CodingState) -> dict:
     )
     (harness_dir / "claude-progress.txt").write_text(content)
 
-    state["current_phase"] = "INIT_PROGRESS"
+    # NOTE: do NOT write state["current_phase"] here. This node runs inside a
+    # Send() fan-out with 4 siblings, all of which would race on the default
+    # last-writer-wins reducer. The phase is set by session_setup_entry after
+    # the fan-in completes.
     append_progress_log(state["run_id"], "INIT_PROGRESS", "claude-progress.txt created")
-    return state
+    # Returning {} (not state) keeps this node a pure side-effect step. The
+    # Send() fan-out siblings all share the default LastValue reducer on every
+    # state field — returning the full state would re-write every key from each
+    # parallel branch and trip InvalidUpdateError.
+    return {}

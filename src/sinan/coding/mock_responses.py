@@ -41,21 +41,21 @@ def register_coding_mock_responses() -> None:
         "strategy": "先实现基础结构",
     }, ensure_ascii=False))
 
+    # Generator's mock writes files under harness/ root. ``main.py`` MUST be
+    # at harness/main.py (not harness/src/main.py) so the e2e runner can find
+    # it; the runner's sanity check and smoke test both look there.
     MockLLMClient.register("请实现以下功能", json.dumps({
         "status": "implemented",
         "files": [
+            {"path": "main.py", "content": "import json\nprint(json.dumps({'ok': True}))\n",
+             "action": "create"},
             {"path": "src/__init__.py", "content": "", "action": "create"},
-            {"path": "src/main.py", "content": "# placeholder\n", "action": "create"},
         ],
         "summary": "Feature implemented via mock",
     }, ensure_ascii=False))
 
-    MockLLMClient.register("自评", json.dumps({
-        "completion_pct": 100,
-        "features_completed": ["feat_001"],
-        "features_remaining": [],
-        "self_assessment": "所有功能均已实现",
-    }, ensure_ascii=False))
+    # (The "自评" mock was for the now-deleted generator_review self-eval node.
+    # Removing it; if you reintroduce a self-eval node, re-add a mock here.)
 
     MockLLMClient.register("质量评估", json.dumps({
         "functionality": 8,
@@ -72,6 +72,7 @@ def register_coding_mock_responses() -> None:
         "files": [
             {"path": "src/state.py", "content": "# patched\n", "action": "modify"},
         ],
+        "verified": True,
         "self_test_passed": True,
         "summary": "Bugs fixed via mock",
     }, ensure_ascii=False))

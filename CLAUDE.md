@@ -66,7 +66,7 @@ python3 -m venv .venv
 ## 关键行为说明
 
 - **用户交互目前是同步 CLI `input()`**，不是 LangGraph 原生 `interrupt() / resume()`。`pending_interrupt`、`resume_payload` 是 state 里的占位字段，未完整接入。
-- **架构层有真实的 revision loop**：用户 reject → `arch_revise` → 重入 `framework_design`，最多 2 轮，超出抛 RuntimeError。
+- **架构层有真实的 revision loop**：用户 reject → `arch_revise` → 重入 `framework_design`，最多 3 轮，超出抛 RuntimeError。
 - **研发层 sprint 上限 10 轮**，每 sprint 内 negotiation ≤ 3 轮，fix loop ≤ 2 轮。
 - **跨 session 不依赖 state**：研发层每个 session 重置上下文，靠磁盘 artifact（`feature_list.json`, `claude-progress.txt`, `sprint_contract.json`, `evaluator_grade.json`, `bug_report.json`）重新 hydrate。
 

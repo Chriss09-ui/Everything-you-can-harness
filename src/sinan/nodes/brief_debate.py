@@ -25,7 +25,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from ..validation import parse_and_validate_artifact
 
@@ -37,8 +37,8 @@ def brief_debate_node(state: HarnessBuilderState) -> dict:
     client = get_llm_client()
     system = get_prompt("brief_debate")
 
-    rp = state.get("requirement_pack") or {}
-    review = state.get("spec_review") or {}
+    rp = load_state_or_file(state, "requirement_pack")
+    review = load_state_or_file(state, "spec_review")
 
     user = (
         f"【拓谱的需求扩展】\n{json.dumps(rp, indent=2, ensure_ascii=False)}\n\n"

@@ -38,16 +38,21 @@ def sprint_complete_node(state: CodingState) -> dict:
     feature_list = state.get("feature_list") or {}
     features = feature_list.get("features", [])
     passing = [f for f in features if f.get("passes")]
+    blocked = [f for f in features if f.get("blocked")]
     total = len(features)
 
     grade = state.get("evaluator_grade") or {}
 
+    # completion_pct counts passing features only. blocked features are NOT
+    # counted as done — they're an explicit "gave up after retry cap" signal.
+    # spec_complete fires only when no feature is left unblocked/unpassed.
     sprint_result = {
         "sprint_number": sprint,
         "total_features": total,
         "completed_features": len(passing),
+        "blocked_features": len(blocked),
         "completion_pct": int(len(passing) / total * 100) if total > 0 else 0,
-        "spec_complete": len(passing) == total,
+        "spec_complete": len(passing) + len(blocked) == total and len(blocked) == 0,
         "qa_grades": {
             "functionality": grade.get("functionality"),
             "product_depth": grade.get("product_depth"),
@@ -59,8 +64,35 @@ def sprint_complete_node(state: CodingState) -> dict:
 
     validate_artifact(sprint_result, "sprint_result")
     write_json(state["run_id"], "sprint_result.json", sprint_result, versioned=True)
-    state["sprint_result"] = sprint_result
-    state["current_phase"] = "SPRINT_COMPLETE"
+
+    # Reset per-sprint counters here (not in the router) — LangGraph only
+    # propagates values a node RETURNS, so router-side mutations are dropped.
+    # sprint_contract MUST also be cleared so sprint_plan re-plans the next
+    # sprint instead of reusing sprint 1's agreed contract.
+    # _is_first_init MUST be flipped to False so sprint 2's session_init
+    # skips the 5 init branches (otherwise they re-write feature_list.json,
+    # claude-progress.txt, and re-run git init, nuking sprint 1's work).
+    next_sprint = sprint + 1
+    updates = {
+        "sprint_result": sprint_result,
+        "current_phase": "SPRINT_COMPLETE",
+        "sprint_number": next_sprint,
+        "session_number": 1,
+        "negotiate_round": 1,
+        "fix_loop_count": 0,
+        "feature_retry_count": 0,
+        "sanity_retry_count": 0,
+        "sprint_contract": None,
+        "evaluator_grade": None,
+        "bug_report": None,
+        "fix_result": None,
+        "current_feature_id": None,
+        "current_feature_status": None,
+        "test_result": None,
+        "implement_result": None,
+        "triage_result": None,
+        "_is_first_init": False,
+    }
 
     append_progress_log(state["run_id"], "SPRINT_COMPLETE",
         f"Sprint {sprint}: {len(passing)}/{total} features done, {'SPEC COMPLETE' if sprint_result['spec_complete'] else 'more sprints needed'}")
@@ -72,4 +104,5 @@ def sprint_complete_node(state: CodingState) -> dict:
     })
     finalize_phase(state["run_id"])
 
+    state.update(updates)
     return state

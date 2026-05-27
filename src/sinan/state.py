@@ -1,6 +1,7 @@
 """HarnessBuilderState — the central state schema for the Sinan workflow."""
 from __future__ import annotations
-from typing import TypedDict, Optional, Literal
+import operator
+from typing import Annotated, TypedDict, Optional, Literal
 from datetime import datetime, timezone
 
 
@@ -8,10 +9,8 @@ class GateFlags(TypedDict, total=False):
     challenge_passed: bool
     architecture_passed: bool
     needs_user_brief: bool
-    needs_user_approval: bool
     risk_level: str
     flagged_risks: list[str]
-    arch_reject_count: int
     shoumen_reasoning: str
     key_concerns: list[str]
     checklist: dict
@@ -25,8 +24,10 @@ class HarnessBuilderState(TypedDict):
 
     # ── User Input ──
     user_raw_input: str
-    user_supplements: list[Optional[str]]
-    user_brief_answers: list[dict]
+    # user_brief_answers defaults to None so load_state_or_file can distinguish
+    # "sinan_debrief hasn't run yet" (None → fall back to disk) from
+    # "sinan_debrief ran but the user skipped every question" ([] → use []).
+    user_brief_answers: Optional[list[dict]]
 
     # ── Core Artifacts ──
     requirement_pack: Optional[dict]
@@ -61,10 +62,19 @@ class HarnessBuilderState(TypedDict):
     arch_reject_count: int
 
     # ── Risk ──
-    risk_register: list[dict]
+    # Each risk-writing node (spec_challenge, architecture_challenge) returns
+    # a partial update {"risk_register": [...its new risks...]}. The
+    # ``operator.add`` reducer concatenates them onto the running list, which
+    # is safe under concurrent writes (e.g. if risk discovery is later fanned
+    # out into parallel reviewers — list.extend from a shared reference would
+    # silently lose entries in that scenario).
+    risk_register: Annotated[list[dict], operator.add]
 
     # ── Messages ──
-    messages: list[dict]
+    # Same reducer pattern as risk_register: nodes append via partial return,
+    # not by mutating state["messages"] directly. Safe under any future
+    # fan-out that uses messages.
+    messages: Annotated[list[dict], operator.add]
 
 
 def make_initial_state(run_id: str) -> HarnessBuilderState:
@@ -73,8 +83,7 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
         started_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         current_phase="INTAKE",
         user_raw_input="",
-        user_supplements=[],
-        user_brief_answers=[],
+        user_brief_answers=None,
         requirement_pack=None,
         spec_review=None,
         brief_debate=None,
@@ -91,9 +100,11 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
             challenge_passed=False,
             architecture_passed=False,
             needs_user_brief=False,
-            needs_user_approval=False,
+            risk_level="unknown",
             flagged_risks=[],
-            arch_reject_count=0,
+            shoumen_reasoning="",
+            key_concerns=[],
+            checklist={},
         ),
         decision_log=[],
         progress_log=[],

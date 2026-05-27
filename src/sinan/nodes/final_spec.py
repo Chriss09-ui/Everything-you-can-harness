@@ -1,7 +1,14 @@
-"""final_spec — 司南 compiles the final Harness Design Draft.
+"""final_spec — 司南 compiles the Harness Design Draft (md + json).
 
 Agent: 司南 (编译者)
-Layer: 架构层 (出口)
+Layer: 架构层 (出口前一站)
+
+NOTE: 本节点在 sinan_approval 之前运行，产出的 md + json 是**待审稿**。
+用户在 sinan_approval 中直接基于这份 md 决策 approve / reject / request_changes：
+- approve → 流程结束
+- reject / request_changes → arch_revise → framework_design 重走辩论 → 重新进 final_spec 重生成
+
+所以 final_spec 在一次 run 里可能被调用多次（每次 reject 重生成一份）。
 
 Reads:
     state["architecture_pack"]  — from zonggong_integrate
@@ -11,16 +18,16 @@ Reads:
     state["subagent_outputs"]  — sub-agent detailed module designs
 
 Writes:
-    state["harness_design_draft"] — final AI-facing design dict
+    state["harness_design_draft"] — AI 代码层可直接解析的结构化设计规范
     state["current_phase"]         — "FINAL_SPEC"
     state["artifact_versions"]     — records harness_design_draft version
 
 Artifacts:
-    harness_design_draft.json  — AI 代码层可直接解析的结构化设计规范 (架构层→研发层交接物)
-    harness_design_final.md    — 人类审核用的可读 Markdown
+    harness_design_draft.json  — 研发层 AI 消费的结构化设计规范（架构层→研发层交接物）
+    harness_design_final.md    — 给用户/审核者阅读的完整设计稿（用户审批时看的就是这份）
 
 Routes:
-    → END
+    → sinan_approval  (linear, 强制用户审批)
 """
 from __future__ import annotations
 import json
@@ -34,24 +41,48 @@ from ..artifacts import (
 from ..validation import validate_artifact
 
 
+def _require(state: HarnessBuilderState, key: str, producer: str, filename: str | None = None) -> dict:
+    """Read a required upstream artifact; raise if missing.
+
+    final_spec used to silently fall back to ``{}`` for missing inputs, which
+    produced a schema-valid but content-empty draft that the coding layer then
+    ran with as if it were real. This helper makes the dependency explicit.
+
+    Args:
+        state: workflow state dict (must contain ``run_id``).
+        key: state field name and (by default) disk filename stem.
+        producer: name of the upstream node responsible for producing this
+            artifact, included in the error message to point at the fix.
+        filename: optional override for disk filename (default: ``<key>.json``).
+    """
+    value = load_state_or_file(state, key, filename=filename)
+    if not value:
+        run_id = state.get("run_id", "<unknown>")
+        fname = filename or f"{key}.json"
+        raise RuntimeError(
+            f"final_spec requires {key} but it is missing in both state and "
+            f"on disk (runs/{run_id}/{fname}). Producer: {producer}. "
+            f"Run the architecture layer from the start, or use --from-brief "
+            f"with a complete run."
+        )
+    return value
+
+
 def final_spec_node(state: HarnessBuilderState) -> dict:
     update_run_state(state["run_id"], "FINAL_SPEC")
     append_progress_log(state["run_id"], "FINAL_SPEC", "Compiling final design draft")
 
-    brief = (
-        load_state_or_file(state, "user_brief_form")
-        or load_state_or_file(state, "requirement_pack")
-        or {}
-    )
-    framework = load_state_or_file(state, "framework_design")
-    reviews = load_state_or_file(state, "subagent_reviews")
-    adjustments = load_state_or_file(state, "framework_adjustments", filename="framework_adjustment.json")
-    arch_review = load_state_or_file(state, "architecture_review")
-    arch_pack = load_state_or_file(state, "architecture_pack")
-    subagent_outputs = (
-        load_state_or_file(state, "subagent_outputs")
-        or arch_pack.get("subagent_outputs", {})
-        or {}
+    # All architecture-debate artifacts are required. We fail fast on missing
+    # upstream rather than silently producing an empty draft. The only optional
+    # field is framework_adjustments (only present after a reject round).
+    brief = _require(state, "user_brief_form", "brief_compile")
+    framework = _require(state, "framework_design", "framework_design")
+    reviews = _require(state, "subagent_reviews", "subagent_review")
+    arch_review = _require(state, "architecture_review", "architecture_challenge")
+    arch_pack = _require(state, "architecture_pack", "zonggong_integrate")
+    subagent_outputs = _require(state, "subagent_outputs", "subagent_review")
+    adjustments = load_state_or_file(
+        state, "framework_adjustments", filename="framework_adjustment.json"
     )
 
     draft = _build_ai_draft(
@@ -68,18 +99,71 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     state["current_phase"] = "FINAL_SPEC"
     state["artifact_versions"]["harness_design_draft"] = "1.0"
 
-    md = _render_markdown(draft, state)
+    # Summary is read AFTER write_json so the draft's own freshly-registered
+    # version shows up in the rendered md. Embedding it inside the JSON draft
+    # would necessarily be one version stale (computed before its own write).
+    version_summary = get_artifact_summary(state["run_id"])
+    md = _render_markdown(draft, state, version_summary)
     write_md(state["run_id"], "harness_design_final.md", md)
 
-    append_progress_log(state["run_id"], "FINAL_SPEC", "Final design draft compiled and saved")
+    append_progress_log(state["run_id"], "FINAL_SPEC", "Design draft compiled and saved (pending user approval)")
     append_decision_log(state["run_id"], {
         "phase": "FINAL_SPEC",
-        "type": "final_deliverable",
-        "content": "Harness Design Draft v1.0 generated",
+        "type": "draft_compiled",
+        "content": "Harness Design Draft compiled — awaiting user approval in sinan_approval",
     })
     finalize_phase(state["run_id"])
 
     return state
+
+
+def _derive_test_cases(brief: dict) -> list[dict]:
+    """Derive initial test_cases for the harness from the requirement contract.
+
+    Each success_criterion gets a placeholder test case with a stable id and
+    the criterion text echoed back as ``scenario``. The user (in
+    sinan_approval) is expected to flesh out the placeholders; if they accept
+    the placeholders as-is, the runner will use whatever the harness's
+    published main.py consumes as input.
+
+    Schema (per test case):
+        {
+          "id": "tc_<n>",
+          "scenario": "<human description — often the success_criterion>",
+          "input": "...",                 # what to feed the harness via stdin
+          "expected_output_keys": [...],  # required top-level keys in output
+          "expected_to_pass": True        # False ⇒ expects the harness to refuse
+        }
+
+    **Placeholder rule**: derived cases have empty ``input`` / empty
+    ``expected_output_keys`` by default, so they're marked
+    ``expected_to_pass=False`` to prevent the runner from treating them as
+    "hard pass" evidence. If the user fills in real input/keys, they're
+    expected to also flip ``expected_to_pass`` to True (otherwise the runner
+    will count a successful run as a "soft pass" — passing against an
+    expectation of failure, which contributes nothing to overall_pass).
+    """
+    if not brief:
+        return []
+    explicit = brief.get("test_cases")
+    if isinstance(explicit, list) and explicit:
+        # User or upstream has already provided test cases — pass through.
+        return explicit
+
+    success_criteria = brief.get("success_criteria") or []
+    cases = []
+    for idx, criterion in enumerate(success_criteria, 1):
+        # Derived cases start as placeholders — runner must not consider
+        # them as hard evidence of correctness.
+        cases.append({
+            "id": f"tc_{idx:03d}",
+            "scenario": criterion,
+            "input": "",                  # placeholder — user fills in
+            "expected_output_keys": [],    # placeholder
+            "expected_to_pass": False,     # placeholder, see docstring
+            "is_placeholder": True,
+        })
+    return cases
 
 
 def _build_ai_draft(
@@ -133,14 +217,19 @@ def _build_ai_draft(
         "run_id": state["run_id"],
 
         # ── Requirements ──
-        "use_case": brief.get("use_case_summary", brief.get("primary_goal", "未定义")),
+        # brief is the enriched user_brief_form; all fields below come from
+        # brief_compile's _enrich_user_brief_form (requirement_pack keys) or
+        # the LLM's own user_brief_form fields. Missing → "未定义"/[]/unknown
+        # is a real failure signal, not a fallback.
+        "use_case": brief.get("use_case_summary", "未定义"),
         "primary_goal": brief.get("primary_goal", "未定义"),
         "scope": {
-            "inclusions": brief.get("scope_inclusions", brief.get("confirmed_requirements", [])),
-            "exclusions": brief.get("scope_exclusions", brief.get("rejected_suggestions", [])),
+            "inclusions": brief.get("scope_inclusions", []),
+            "exclusions": brief.get("scope_exclusions", []),
         },
         "success_criteria": brief.get("success_criteria", []),
-        "constraints": brief.get("known_constraints", brief.get("constraints_final", [])),
+        "test_cases": _derive_test_cases(brief),
+        "constraints": brief.get("known_constraints", []),
         "assumptions": brief.get("assumptions", []),
         "stakeholders": brief.get("stakeholders", []),
         "persona_qualities": brief.get("persona_qualities", []),
@@ -187,45 +276,73 @@ def _build_ai_draft(
         # ── Risks ──
         "risks_identified": arch_pack.get("risks_identified", []),
         "alternative_options": arch_pack.get("alternative_options", []),
-
-        # ── Metadata ──
-        "artifact_version_summary": get_artifact_summary(state["run_id"]),
+        # NOTE: artifact_version_summary is intentionally NOT embedded here.
+        # It is rendered into the md AFTER write_json runs (see final_spec_node),
+        # so the current draft's own version is visible in the rendered output.
     }
 
 
 def _derive_state_schema(state: HarnessBuilderState) -> dict:
-    """Derive the target harness's state schema from the workflow state."""
-    known_fields = [
-        {"name": "run_id", "type": "string", "description": "Run identifier"},
-        {"name": "current_phase", "type": "string", "description": "Current execution phase"},
-        {"name": "user_raw_input", "type": "string", "description": "Original user input"},
-        {"name": "messages", "type": "list[dict]", "description": "Conversation history"},
-    ]
+    """Reflect ``HarnessBuilderState``'s declared fields into the schema section.
 
-    extra_fields = []
-    brief = state.get("user_brief_form") or {}
-    inclusions = brief.get("scope_inclusions", [])
-    exclusions = brief.get("scope_exclusions", [])
+    Previously the design draft embedded a hand-maintained list of 25 fields;
+    any field added/removed in ``state.py`` would silently drift out of sync.
+    We now read ``HarnessBuilderState.__annotations__`` so the schema in the
+    design draft is always the actual schema. Field order matches the
+    declaration order in the TypedDict.
+    """
+    from ..state import HarnessBuilderState as _State
 
-    if "需求分析与扩展" in inclusions:
-        extra_fields.append({"name": "requirement_pack", "type": "dict", "description": "Expanded requirement pack"})
-    if "架构设计" in inclusions:
-        extra_fields.append({"name": "architecture_pack", "type": "dict", "description": "Architecture design package"})
-        extra_fields.append({"name": "framework_design", "type": "dict", "description": "Framework design artifact"})
-    if "用户审批" in inclusions:
-        extra_fields.append({"name": "gate_flags", "type": "dict", "description": "Gate evaluation flags"})
-    if exclusions:
-        for ex in exclusions:
-            if "沙盒" in ex or "sandbox" in ex.lower():
-                extra_fields.append({"name": "sandbox_sim", "type": "bool", "description": "Sandbox simulation mode"})
-
-    return {
-        "required_fields": known_fields + extra_fields,
-        "total_field_count": len(known_fields) + len(extra_fields),
-    }
+    fields = []
+    for name, typ in _State.__annotations__.items():
+        fields.append({
+            "name": name,
+            "type": _type_to_string(typ),
+            # We don't try to auto-generate descriptions — that would just be
+            # another hand-maintained table, prone to the same drift. The md
+            # rendering shows name + type, which is enough for readers.
+            "description": "",
+        })
+    return {"required_fields": fields}
 
 
-def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
+def _type_to_string(typ) -> str:
+    """Render a typing annotation to a short human-readable string."""
+    import typing
+    # Primitive types
+    if typ is str:
+        return "string"
+    if typ is int:
+        return "int"
+    if typ is bool:
+        return "bool"
+    if typ is dict:
+        return "dict"
+    if typ is list:
+        return "list"
+    origin = typing.get_origin(typ)
+    args = typing.get_args(typ)
+    if origin is typing.Union:
+        # Optional[X] is Union[X, None]
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1 and len(args) == 2:
+            return f"Optional[{_type_to_string(non_none[0])}]"
+        return " | ".join(_type_to_string(a) for a in args)
+    if origin is dict:
+        return "dict"
+    if origin is list:
+        return "list"
+    if origin is typing.Literal:
+        return f"Literal[{', '.join(repr(a) for a in args)}]"
+    # Fallback — strip module prefix from typing constructs
+    return getattr(typ, "__name__", str(typ)).split(".")[-1]
+
+
+def _render_markdown(
+    draft: dict,
+    state: HarnessBuilderState,
+    version_summary: dict | None = None,
+) -> str:
     lines = [
         f"# 司南 Harness 设计稿 v{draft['version']}",
         "",
@@ -319,7 +436,7 @@ def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
     schema = draft.get("state_schema", {})
     schema_fields = schema.get("required_fields", [])
     if schema_fields:
-        lines.append(f"共 {schema.get('total_field_count', len(schema_fields))} 个字段：")
+        lines.append(f"共 {len(schema_fields)} 个字段：")
         lines.append("")
         lines.append("| 字段名 | 类型 | 描述 |")
         lines.append("|--------|------|------|")
@@ -467,7 +584,7 @@ def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:
         "",
         "## 八、Artifact 版本历史",
     ]
-    version_summary = draft.get("artifact_version_summary", {})
+    version_summary = version_summary or {}
     if version_summary:
         for artifact, info in version_summary.items():
             versions = info.get("versions", [])

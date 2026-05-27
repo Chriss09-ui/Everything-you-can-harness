@@ -33,28 +33,30 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
                                                               approval_gate
                                                               (守门评级)
                                                                     │
-                                              ┌─────────────────────┴────────────────────┐
-                                              │                                          │
-                                       risk = low                                  risk ≠ low
-                                              │                                          │
-                                              ▼                                          ▼
-                                         final_spec                              sinan_approval
-                                              │                                  (用户审批)
-                                              ▼                                          │
-                                            END                              ┌───────────┴──────────┐
-                                                                             │                      │
-                                                                          approve              reject / request_changes
-                                                                             │                      │
-                                                                             ▼                      ▼
-                                                                        final_spec           arch_revise
-                                                                             │              （≤ 2 轮，超出 RuntimeError）
-                                                                             ▼                      │
-                                                                            END                     ▼
-                                                                                            framework_design
-                                                                                            （重入四步辩论）
+                                                                    ▼
+                                                                final_spec
+                                                          (产出 md + json 待审稿)
+                                                                    │
+                                                                    ▼
+                                                              sinan_approval
+                                                       (司南带着用户过一遍 md)
+                                                                    │
+                                              ┌─────────────────────┴─────────────────────┐
+                                              │                                           │
+                                           approve                                reject / request_changes
+                                              │                                           │
+                                              ▼                                           ▼
+                                             END                                       arch_revise
+                                                                                          │
+                                                                                          ▼
+                                                                                   framework_design
+                                                                                  (重走四步辩论)
 ```
 
-九个 node + 两个条件路由器。代码定义见 [src/sinan/graph.py](../src/sinan/graph.py) 第 34–94 行。
+九个 node + 一个条件路由器。代码定义见 [src/sinan/graph.py](../src/sinan/graph.py)。
+
+> **关键设计**：`final_spec` 在 `sinan_approval` **之前**运行——先把完整设计稿（`harness_design_final.md` 给人看、`harness_design_draft.json` 给研发层 AI 看）落盘，再让司南带着用户过一遍。
+> 每次 reject → `arch_revise → framework_design` 重走辩论 → 重新进 `final_spec` 重生成 md，再让用户审。
 
 ---
 
@@ -67,10 +69,10 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 | 3 | `framework_adjust` | 总工框架设计师 | 综合评审意见，调整设计（Step 3） |
 | 4 | `zonggong_integrate` | 总工 (Zonggong) | 综合集成，出 `architecture_pack`（Step 4） |
 | 5 | `architecture_challenge` | 逆审 (Nishen) | 红队式挑战，找漏洞，写 `architecture_review` |
-| 6 | `approval_gate` | 守门 (Shoumen) | LLM 评估风险等级 → `gate_flags.risk_level` |
-| 7 | `sinan_approval` | 司南 (用户交互) | 仅在 risk ≠ low 时调用，收集用户审批 |
-| 8 | `arch_revise` | 司南 (翻译者) | 把用户 reject 翻译成 `arch_revision_brief`，重入 |
-| 9 | `final_spec` | 司南 (编译者) | 出 `harness_design_draft.json` + `harness_design_final.md` |
+| 6 | `approval_gate` | 守门 (Shoumen) | LLM 汇总风险要点 → `gate_flags.risk_level`（展示给用户） |
+| 7 | `final_spec` | 司南 (编译者) | 产出 `harness_design_draft.json` + `harness_design_final.md`（待审稿） |
+| 8 | `sinan_approval` | 司南 (用户交互) | **带用户过完整 md**，收集 approve / reject / request_changes |
+| 9 | `arch_revise` | 司南 (翻译者) | 把用户 reject 翻译成 `arch_revision_brief`，重入 framework_design |
 
 每个 node 的 Reads / Writes / Artifacts / Routes 全表在 [src/sinan/nodes/NODES.md](../src/sinan/nodes/NODES.md#架构层-nodes-9)。
 
@@ -89,10 +91,14 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 ### 出口
 - `runs/<run_id>/harness_design_draft.json` — **研发层的输入**（落盘是契约，state 是热路径）。**versioned 写入**：每次重跑都自动归档为 `harness_design_draft_v1.json` / `_v2.json` ... 可回滚 / 可 diff。
-- `runs/<run_id>/harness_design_final.md` — 人类可读的最终设计稿
 
-> 研发层的 `planner_node` 优先读 state，state 为空时从 `harness_design_draft.json` 读。
-> 因此架构层一旦写盘成功，研发层可以独立启动（`python -m sinan.cli --from-design <run_id>`）。
+  **关键字段：`test_cases`** — 一组测试用例（id / scenario / input / expected_output_keys / expected_to_pass），由 `final_spec` 从 `success_criteria` 推导出占位骨架。研发层的 `evaluator_qa` 会用 `subprocess + timeout(60s)` 真跑 `harness/main.py` 对照这组用例打分。用户在 `sinan_approval` 阶段能看到、并能编辑 `harness_design_draft.json` 把占位补全。
+
+- `runs/<run_id>/harness_design_final.md` — 给用户/审核者阅读的完整设计稿。**`sinan_approval` 就是带用户过这份 md**；用户决策依据的就是这份文档。
+
+> 两个出口都在 `final_spec` 节点产出——这节点在 `sinan_approval` 之前运行。
+> 也就是说：用户审批时手里已经有完整 md 在磁盘上了。
+> 研发层入口：`python -m sinan.cli --from-design <run_id>`，从 `harness_design_draft.json` 恢复。
 
 ### 中间产物（按顺序生成）
 
@@ -114,27 +120,25 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 ## 5. 路由规范
 
-两个 router 函数都在 [src/sinan/graph.py](../src/sinan/graph.py)：
+路由函数都在 [src/sinan/graph.py](../src/sinan/graph.py)。
 
-### `_approval_gate_router` (第 104 行)
+### 边（线性）
+- `approval_gate → final_spec`：守门讲完风险分级，立刻产出设计稿（md + json）
+- `final_spec → sinan_approval`：司南带用户过完整 md，收集决策
+- `arch_revise → framework_design`：reject 后回到辩论起点重生成
 
-```
-risk_level == "low"  → final_spec       (自动放行)
-risk_level != "low"  → sinan_approval   (弹给用户审批)
-```
+仅有一个路由器：
 
-`risk_level` 由 `approval_gate` node 通过 LLM 判定写入 `state["gate_flags"]["risk_level"]`。
-
-### `_approval_outcome_router` (第 112 行)
+### `_approval_outcome_router` (graph.py)
 
 ```
-approval == "approve"                            → final_spec
+approval == "approve"                            → END（final_spec 已运行过）
 approval == "reject" / "request_changes"
-    AND arch_reject_count < 2                    → arch_revise → framework_design
-    AND arch_reject_count >= 2                   → raise RuntimeError("max retry")
+    AND arch_reject_count < 3                    → arch_revise → framework_design
+    AND arch_reject_count >= 3                   → raise RuntimeError("max retry")
 ```
 
-**`arch_reject_count` 在 `arch_revise` 里递增**，所以第 1 次 reject 后再 reject 就到 2 抛错。
+**`arch_reject_count` 在 `sinan_approval` 检测到 reject/request_changes 后立即递增**（先递增再路由），所以最多允许 3 次用户拒绝，第 3 次时路由器抛 `RuntimeError`。
 
 ---
 
@@ -230,11 +234,12 @@ approval == "reject" / "request_changes"
 ### 改 risk 等级判定逻辑
 
 `approval_gate` 写 `state["gate_flags"]["risk_level"]`，由 LLM 判定（不是硬编码规则）。
-要改：动 `approval_gate.py` 的 prompt，或在 `_approval_gate_router` 里加更细的分支。
+要改：动 `approval_gate.py` 的 prompt。注意：risk_level 这里只作为**展示信息**给用户，
+不参与路由决策——架构辩论结束后**必须**进用户审批，与 risk_level 值无关。
 **注意**：如果加新的 risk 分支（如 "medium"），同步改：
 - `state.py` 的 `GateFlags` 注释
-- `graph.py` `_approval_gate_router` 的返回值映射
-- [NODES.md](../src/sinan/nodes/NODES.md) `approval_gate` 行的 Routes
+- [NODES.md](../src/sinan/nodes/NODES.md) `approval_gate` 行的 Writes
+- `approval_gate.py` 节点 docstring
 - 本指南"路由规范"段
 
 ---
@@ -242,10 +247,10 @@ approval == "reject" / "request_changes"
 ## 9. 容易踩的坑
 
 - **架构层和需求层共享 `HarnessBuilderState`**：加字段时考虑会不会影响需求层。
-- **`framework_design` 可能被多次调用**：因为 reject 会重入它。所以它必须能读 `arch_revision_brief`（如果存在）。
+- **`framework_design` 可能被多次调用**：因为 reject 会重入它。所以它必须能读 `arch_revision_brief`（如果存在）。同样 `final_spec` 也会被多次调用——每次产出新的 versioned draft + 新的 md。
 - **`sinan_approval` 是同步 `input()`**：跟需求层的 `sinan_debrief` 同问题，未来要 web UI 必须重写。
-- **`arch_reject_count` 超过 2 抛 RuntimeError**：不是优雅退出，要改用其他兜底（如把 spec 标记为 "stuck"）要小心改 router 和 cli.py 的 except 路径。
-- **`approval_gate` 不做审批决定**，只评级。"是否要用户审批" 由 router 决定。两者职责必须分清。
+- **`arch_reject_count` 在 sinan_approval 节点里就 +=1**（路由前），超过 3 次抛 RuntimeError——不是 2 次，文档同步过。
+- **`final_spec` 不是终结节点**：在 `sinan_approval` 之前运行，产出的 md/json 是**待审稿**。rejected 之后会重生成。approve 才 END。
 - **改完代码记得回 [CLAUDE.md 改动同步原则](../CLAUDE.md#改动同步原则强制) 核对清单。**
 
 ---

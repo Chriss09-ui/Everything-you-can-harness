@@ -27,7 +27,14 @@ class CodingState(TypedDict, total=False):
     spec: Optional[dict]                 # product spec from planner
     sprint_contract: Optional[dict]      # negotiated sprint goals
     sprint_result: Optional[dict]        # sprint evaluation summary
-    feature_list: Optional[dict]         # in-memory view of feature_list.json
+    # feature_list: in-memory view of feature_list.json. Written by planner,
+    # init_feature_list, read_feature_list, and commit_feature. NO reducer:
+    # the graph guarantees only ONE of these runs per super-step. planner and
+    # init_feature_list run before any fan-out; read_feature_list runs inside
+    # the session fan-out but is the sole feature_list writer there;
+    # commit_feature runs sequentially after the feature loop. If a future
+    # change adds a parallel writer, switch to a LastValue or merge reducer.
+    feature_list: Optional[dict]
     current_feature_id: Optional[str]
     current_feature_status: Optional[str]
     test_result: Optional[dict]
@@ -39,7 +46,6 @@ class CodingState(TypedDict, total=False):
     sanity_pass: Optional[bool]
     implement_result: Optional[dict]
     triage_result: Optional[dict]
-    generator_self_eval: Optional[dict]
     feature_retry_count: int
     sanity_retry_count: int          # caps the sanity_check→bug_triage→sanity_check loop
 
@@ -49,6 +55,13 @@ class CodingState(TypedDict, total=False):
     # ── Session budget ──
     session_progress_count: int
 
+    # ── Init fan-out gate ──
+    # Set by session_init_node; True only on Sprint 1, Session 1 — gates the
+    # 5-node init parallel fan-out. Subsequent sprints / sessions skip it and
+    # go straight to session_setup_entry. Kept optional/None-default rather
+    # than bool, so unset is distinguishable from "not first init".
+    _is_first_init: Optional[bool]
+
     # ── Session context (parallel reads, merged by reducer) ──
     # Fields: pwd, progress, feature_list, git_history
     # Written by read_pwd, read_progress, read_feature_list, read_git_log in parallel
@@ -57,7 +70,9 @@ class CodingState(TypedDict, total=False):
     # ── Decision log ──
     decision_log: list[dict]
     progress_log: list[dict]
-    messages: list[dict]
+    # Messages uses operator.add reducer so concurrent/partial writes append
+    # instead of overwriting — same pattern as design-layer state.
+    messages: Annotated[list[dict], operator.add]
 
 
 def make_coding_state(run_id: str, harness_design_draft: dict) -> CodingState:
@@ -83,7 +98,6 @@ def make_coding_state(run_id: str, harness_design_draft: dict) -> CodingState:
         sanity_pass=None,
         implement_result=None,
         triage_result=None,
-        generator_self_eval=None,
         feature_retry_count=0,
         sanity_retry_count=0,
         session_progress_count=0,

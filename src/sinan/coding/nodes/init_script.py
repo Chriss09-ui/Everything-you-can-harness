@@ -41,6 +41,7 @@ def init_script_node(state: CodingState) -> dict:
     init_path.write_text("\n".join(lines) + "\n")
     init_path.chmod(0o755)
 
-    state["current_phase"] = "INIT_SCRIPT"
+    # NOTE: do NOT write state["current_phase"] — see init_progress.py.
     append_progress_log(state["run_id"], "INIT_SCRIPT", "init.sh created")
-    return state
+    # Returning {} keeps this a side-effect-only step; see init_progress.py.
+    return {}

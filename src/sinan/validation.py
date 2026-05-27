@@ -11,6 +11,13 @@ artifact must register its schema here in the same commit.
 from __future__ import annotations
 
 import json
+import re
+
+
+_FENCE_RE = re.compile(
+    r"^\s*```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*)```\s*$",
+    re.DOTALL,
+)
 
 
 _REQUIRED_FIELDS = {
@@ -80,7 +87,7 @@ _REQUIRED_FIELDS = {
         # important schema in the whole project. final_spec assembles it
         # from many architecture artifacts; planner consumes it.
         "version", "use_case", "primary_goal", "scope",
-        "success_criteria", "graph", "phase_sequence",
+        "success_criteria", "test_cases", "graph", "phase_sequence",
         "memory_module", "handoff_protocol", "eval_placements",
         "state_schema",
     },
@@ -105,13 +112,17 @@ _REQUIRED_FIELDS = {
     "implement_result": {
         "status", "files",
     },
-    "generator_self_eval": {
-        "completion_pct", "self_assessment",
-    },
     "evaluator_grade": {
         "overall_pass", "summary",
     },
     "fix_result": {
+        # NOTE: ``verified`` is intentionally NOT in the schema. generator_fix
+        # reads ``result.get("verified")`` and only falls back to sanity.passed
+        # when the LLM omitted the field entirely. If we required it here,
+        # LLMs that explicitly return ``verified: false`` (admitting they
+        # didn't fix the bug) would still pass schema, but the code path
+        # difference between "missing" and "false" matters — see
+        # generator_fix.py for the full rule.
         "status", "files",
     },
     "bug_report": {
@@ -126,9 +137,9 @@ _REQUIRED_FIELDS = {
 def parse_llm_json(raw: str, artifact_name: str) -> dict:
     """Strip markdown fences and parse a JSON-only LLM response."""
     text = raw.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
+    m = _FENCE_RE.match(text)
+    if m:
+        text = m.group("body").strip()
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:

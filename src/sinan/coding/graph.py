@@ -29,7 +29,6 @@ from .nodes import (
     implement_feature,
     test_feature,
     commit_feature,
-    generator_review,
     evaluator_qa,
     evaluator_bugs,
     generator_fix,
@@ -77,8 +76,9 @@ def build_coding_graph() -> StateGraph:
     g.add_node("test_feature", _wrap(test_feature.test_feature_node))
     g.add_node("commit_feature", _wrap(commit_feature.commit_feature_node))
 
-    # Sprint review
-    g.add_node("generator_review", _wrap(generator_review.generator_review_node))
+    # Sprint review: evaluator_qa is the entry point (generator_review
+    # self-eval has been removed — sprint goes directly from commit_feature
+    # to evaluator_qa for independent QA).
     g.add_node("evaluator_qa", _wrap(evaluator_qa.evaluator_qa_node))
     g.add_node("evaluator_bugs", _wrap(evaluator_bugs.evaluator_bugs_node))
 
@@ -95,7 +95,6 @@ def build_coding_graph() -> StateGraph:
     g.add_edge("planner", "sprint_plan")
     g.add_edge("sprint_plan", "sprint_negotiate")
     g.add_edge("sprint_setup", "session_init")
-    g.add_edge("generator_review", "evaluator_qa")
     g.add_edge("implement_feature", "test_feature")
 
     # ── Session init: Sprint 1 → 5 parallel init branches (via Send) ──
@@ -132,7 +131,7 @@ def build_coding_graph() -> StateGraph:
         _pick_feature_router,
         {
             "implement_feature": "implement_feature",
-            "generator_review": "generator_review",
+            "evaluator_qa": "evaluator_qa",
         },
     )
 
@@ -171,7 +170,7 @@ def build_coding_graph() -> StateGraph:
         _commit_feature_router,
         {
             "pick_feature": "pick_feature",
-            "generator_review": "generator_review",
+            "evaluator_qa": "evaluator_qa",
         },
     )
 
@@ -190,6 +189,7 @@ def build_coding_graph() -> StateGraph:
         _evaluator_bugs_router,
         {
             "generator_fix": "generator_fix",
+            "sprint_complete": "sprint_complete",
         },
     )
 
@@ -268,7 +268,7 @@ def _sanity_check_router(state: CodingState) -> str:
 def _pick_feature_router(state: CodingState) -> str:
     if state.get("current_feature_id"):
         return "implement_feature"
-    return "generator_review"
+    return "evaluator_qa"
 
 
 def _test_feature_router(state: CodingState) -> str:
@@ -288,10 +288,14 @@ def _commit_feature_router(state: CodingState) -> str:
     sprint_goals = sprint_contract.get("sprint_goals", [])
     sprint_feature_ids = {g.get("feature_id") for g in sprint_goals if g.get("feature_id")}
     sprint_features = [f for f in features if f.get("id") in sprint_feature_ids]
-    unfinished = [f for f in sprint_features if not f.get("passes")]
+    # A sprint-scoped feature is "done" if it either passed or hit the retry
+    # cap (blocked). Both should route forward to evaluator_qa so the sprint
+    # can finish; re-looping back to pick_feature would just re-select the
+    # blocked feature and spin forever.
+    unfinished = [f for f in sprint_features if not f.get("passes") and not f.get("blocked")]
     if unfinished:
         return "pick_feature"
-    return "generator_review"
+    return "evaluator_qa"
 
 
 def _evaluator_qa_router(state: CodingState) -> str:
@@ -302,6 +306,13 @@ def _evaluator_qa_router(state: CodingState) -> str:
 
 
 def _evaluator_bugs_router(state: CodingState) -> str:
+    # If the bug report is unmanageably large, no point dragging the sprint
+    # through a 2-round fix loop that won't converge. Bail to sprint_complete,
+    # which will plan a new (smaller-scope) sprint.
+    bug_report = state.get("bug_report") or {}
+    bugs = bug_report.get("bugs", [])
+    if len(bugs) >= 20:
+        return "sprint_complete"
     return "generator_fix"
 
 
@@ -328,12 +339,7 @@ def _sprint_complete_router(state: CodingState) -> str:
             f"Please review the generated code manually."
         )
 
-    state["sprint_number"] = sprint_num + 1
-    state["session_number"] = 1
-    state["negotiate_round"] = 1
-    state["fix_loop_count"] = 0
-    state["feature_retry_count"] = 0
-    state["sanity_retry_count"] = 0
+    # Counters are reset by sprint_complete_node; router is read-only.
     return "sprint_plan"
 
 

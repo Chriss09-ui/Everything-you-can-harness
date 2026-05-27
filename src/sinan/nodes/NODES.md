@@ -187,10 +187,10 @@ Routes:
 |------|------|
 | Agent | 守门 (Shoumen) |
 | Layer | 架构层 |
-| Reads | `architecture_pack`, `architecture_review`, `gate_flags` |
-| Writes | `gate_flags` (设置 risk_level), `current_phase` |
+| Reads | `architecture_pack`, `architecture_review` |
+| Writes | `gate_flags` (设置 risk_level / shoumen_reasoning / key_concerns / checklist / flagged_risks), `pending_interrupt`, `current_phase` |
 | Artifacts | (无) |
-| Routes | → `final_spec` (risk=low) / → `sinan_approval` (risk=high) |
+| Routes | → `sinan_approval` (用户审批是**强制**环节，守门只汇总风险要点展示给用户) |
 
 ### 12. sinan_approval
 
@@ -198,10 +198,16 @@ Routes:
 |------|------|
 | Agent | 司南 (用户交互) |
 | Layer | 架构层 |
-| Reads | `architecture_pack`, `architecture_review` |
-| Writes | `resume_payload`, `current_phase` |
-| Artifacts | (无 — 通过 input() 收集用户审批) |
-| Routes | → `final_spec` (approve) / → `arch_revise` (reject/request_changes, ≤2 轮) |
+| Reads | `harness_design_draft`（含完整设计稿，分章节展示）, `gate_flags`（守门风险摘要） |
+| Writes | `resume_payload`, `arch_reject_count++` on reject, `pending_interrupt=Null`, `current_phase` |
+| Artifacts | (无 — interactive console node) |
+| Routes | → END (approve, router 决定) / → arch_revise (reject/request_changes, ≤3 轮，超出 RuntimeError) |
+
+> **设计意图**：本节点前置的 `final_spec` 已经把完整的 `harness_design_draft.json` +
+> `harness_design_final.md` 落盘。司南在这节点里**分章节把完整设计讲给用户听**
+> （需求 / 架构 / 模块 / 治理 / 理念 / 审查 / 风险），让用户在掌握全貌后决策。
+>
+> 单次 run 内可能调用多次（reject 后 framework_design 重走辩论 → 重新进 final_spec → 重新进 sinan_approval）。
 
 ### 13. arch_revise
 
@@ -210,51 +216,55 @@ Routes:
 | Agent | 司南 (翻译者) |
 | Layer | 架构层 |
 | Reads | `architecture_review`, `resume_payload` |
-| Writes | `arch_revision_brief`, `arch_reject_count++`, `current_phase` |
+| Writes | `arch_revision_brief`, `current_phase` |
 | Artifacts | `arch_revision_brief.json` |
 | Routes | → `framework_design` (linear, 重入四步辩论) |
+
+> 注：`arch_reject_count` 不在这里递增——在 `sinan_approval` 节点里就 +=1 了（reject 之前就计数）。
 
 ### 14. final_spec
 
 | 属性 | 值 |
 |------|------|
 | Agent | 司南 (编译者) |
-| Layer | 架构层 (出口) |
-| Reads | `architecture_pack`, `user_brief_form`（均经 `load_state_or_file()`，state 空时回退到磁盘） |
+| Layer | 架构层（sinan_approval 前一站） |
+| Reads | `architecture_pack`, `user_brief_form`, `framework_design`, `subagent_reviews`, `subagent_outputs`（均经 `load_state_or_file()`） |
 | Writes | `harness_design_draft`, `current_phase` |
-| Artifacts | `harness_design_draft.json` (**versioned**), `harness_design_final.md` |
-| Routes | → END |
+| Artifacts | `harness_design_draft.json` (**versioned**) — 研发层 AI 消费；`harness_design_final.md` — **给用户阅读的完整设计稿**，sinan_approval 就基于这份 md 讲 |
+| Routes | → `sinan_approval` (linear, 强制用户审批) |
 
-> **层间交接点：** `harness_design_draft.json` 是架构层→研发层的唯一交接物。
+> **设计意图**：本节点的位置在 `sinan_approval` **之前**——先把两版交接物准备好，
+> 再让司南带着用户过一遍。approve 时直接结束（router → END），reject 时回去
+> `framework_design` 重走辩论 → 重新进 final_spec 重新生成 md + json。
+>
+> **层间交接点**：`harness_design_draft.json` 是架构层→研发层的唯一交接物。
 
 ---
 
 ## 路由函数规范
 
 ```python
-def _approval_gate_router(state: HarnessBuilderState) -> str:
-    """Route: approval_gate → final_spec | sinan_approval.
-
-    Condition:
-        → final_spec      when risk_level == "low"
-        → sinan_approval  when risk_level != "low"
-    """
-
 def _approval_outcome_router(state: HarnessBuilderState) -> str:
-    """Route: sinan_approval → final_spec | arch_revise.
+    """Route: sinan_approval → END | arch_revise.
 
     Condition:
-        → final_spec   when approval == "approve"
-        → arch_revise  when rejection (≤2 rounds, else RuntimeError)
+        → END          when approval == "approve"
+        → arch_revise  when rejection (≤3 rounds, else RuntimeError)
     """
 ```
 
+> 注：从 `approval_gate` 开始的边都是这种顺序：`approval_gate → final_spec → sinan_approval`。
+> 用户审批是**强制**环节，守门只产出一目了然的风险摘要展示给用户。
+
 ---
 
-## 遗留节点 (不在当前 graph 中)
+## 入口节点（不在 graph 中注册，由 CLI 直接调用）
 
-- `intake.py` — 早期入口节点，已由 `spec_expansion` 替代
-- `wait_brief.py` — 早期用户交互节点，已由 `sinan_debrief` 替代
+- `intake.py` — 接收用户原始输入，初始化 state。由 `cli.py` 在 `graph.invoke()` 之前调用，因此不在 `graph.py` 里注册。
+
+## 已删除的遗留节点
+
+- `wait_brief.py` — 已删除，由 `sinan_debrief` 替代。`mock_responses.py` 中的 phantom 名称也已清理。
 
 ---
 

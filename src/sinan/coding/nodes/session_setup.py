@@ -49,33 +49,40 @@ def session_setup_exit_node(state: CodingState) -> dict:
     append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
         f"Session {session}: 4 context reads complete")
 
-    # Append git history to messages for Generator/Evaluator context
+    # Append git history to messages for Generator/Evaluator context.
+    # Partial return — messages uses operator.add reducer so this appends
+    # safely (no in-place mutation of state["messages"]).
     git_history = state.get("session_context", {}).get("git_history", "")
-    state["messages"] = state.get("messages", [])
-    state["messages"].append({
+    new_messages = [{
         "role": "system",
         "content": f"Git history:\n{git_history}" if git_history else "No git history yet",
-    })
+    }]
 
     # Run init.sh
     harness_dir = get_run_dir(state["run_id"]) / "harness"
     init_sh = harness_dir / "init.sh"
     if init_sh.exists():
         try:
+            # check=True so a non-zero exit raises CalledProcessError and
+            # lands in the except branch below — without it, init.sh
+            # failures silently log "executed successfully".
             subprocess.run(
                 ["bash", str(init_sh)],
                 cwd=harness_dir,
                 capture_output=True,
                 text=True,
                 timeout=60,
+                check=True,
             )
             append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
                 "init.sh executed successfully")
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        except subprocess.TimeoutExpired as e:
             append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
-                f"init.sh warning: {e}")
+                f"init.sh timeout after 60s: {e}")
+        except subprocess.CalledProcessError as e:
+            append_progress_log(state["run_id"], "SESSION_SETUP_EXIT",
+                f"init.sh exit {e.returncode}: {e.stderr[:200] if e.stderr else ''}")
 
-    state["current_phase"] = "SESSION_SETUP_EXIT"
     append_decision_log(state["run_id"], {
         "phase": "SESSION_SETUP",
         "type": "session_ready",
@@ -83,4 +90,7 @@ def session_setup_exit_node(state: CodingState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    return state
+    return {
+        "current_phase": "SESSION_SETUP_EXIT",
+        "messages": new_messages,
+    }

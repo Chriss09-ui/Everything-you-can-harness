@@ -18,7 +18,7 @@ Artifacts:
 
 Routes:
     → implement_feature  when current_feature_id is set
-    → generator_review   when no feature selected (sprint scope done)
+    → evaluator_qa       when no feature selected (sprint scope done)
 """
 from __future__ import annotations
 import json
@@ -45,20 +45,29 @@ def pick_feature_node(state: CodingState) -> dict:
     # Get passing feature IDs
     passing_ids = {f["id"] for f in features if f.get("passes")}
 
-    # Select ready feature: not done, dependencies met, highest priority
+    # Select ready feature: not done, not blocked, dependencies met, highest priority
     ready = []
     for f in sprint_features:
         if f.get("passes"):
+            continue
+        if f.get("blocked"):
+            # Hit retry cap in a previous attempt — skip, do not keep
+            # re-selecting something we've already given up on this sprint.
             continue
         deps = f.get("depends_on", [])
         if all(dep in passing_ids for dep in deps):
             ready.append(f)
 
     if not ready:
-        # No ready features in sprint scope — check if all done or stuck
-        unfinished = [f for f in sprint_features if not f.get("passes")]
+        # No ready features in sprint scope — check if all done/blocked or stuck
+        unfinished = [f for f in sprint_features if not f.get("passes") and not f.get("blocked")]
         if not unfinished:
-            append_progress_log(state["run_id"], "PICK_FEATURE", "All sprint features completed")
+            blocked = [f for f in sprint_features if f.get("blocked")]
+            if blocked:
+                append_progress_log(state["run_id"], "PICK_FEATURE",
+                    f"All sprint features done or blocked ({len(blocked)} blocked)")
+            else:
+                append_progress_log(state["run_id"], "PICK_FEATURE", "All sprint features completed")
         else:
             append_progress_log(state["run_id"], "PICK_FEATURE",
                 f"Blocked: dependencies not met for {len(unfinished)} features")

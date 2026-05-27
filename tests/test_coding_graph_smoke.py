@@ -42,7 +42,6 @@ def test_coding_graph_has_expected_nodes():
         "implement_feature",
         "test_feature",
         "commit_feature",
-        "generator_review",
         "evaluator_qa",
         "evaluator_bugs",
         "generator_fix",

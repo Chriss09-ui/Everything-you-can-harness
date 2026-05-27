@@ -34,6 +34,7 @@ def init_git_node(state: CodingState) -> dict:
     git_init(run_id)
     (harness_dir / "src").mkdir(parents=True, exist_ok=True)
 
-    state["current_phase"] = "INIT_GIT"
+    # NOTE: do NOT write state["current_phase"] — see init_progress.py.
     append_progress_log(run_id, "INIT_GIT", "git repository initialized")
-    return state
+    # Returning {} keeps this a side-effect-only step; see init_progress.py.
+    return {}
