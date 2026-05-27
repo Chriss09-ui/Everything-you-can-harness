@@ -151,7 +151,41 @@ def write_json(
         _archive_artifact(run_id, filename, version_note)
 
     _atomic_write_json(path, data)
+
+    if versioned:
+        # Register the new un-versioned file as the current version, so
+        # get_current_artifact / get_artifact_summary can locate it. Previously
+        # this step was missing — the registry only had archived entries with
+        # current=False, so callers couldn't tell which version was "live".
+        _register_current(run_id, filename)
     return path
+
+
+def _register_current(run_id: str, filename: str) -> None:
+    """Record the un-versioned file as the live current version in the registry."""
+    from datetime import datetime, timezone
+    registry = _get_registry(run_id)
+    base_name = _strip_version_suffix(filename.replace(".json", ""))
+    existing = registry.get(base_name, [])
+    next_version = max([e["version"] for e in existing], default=0) + 1
+    # If an older "current" entry already exists, demote it.
+    for e in existing:
+        if e.get("current") and e["filename"] == filename:
+            # Already registered as current; nothing to do.
+            return
+    # Drop any stale current flag from prior entries.
+    for e in existing:
+        if e.get("current"):
+            e["current"] = False
+    existing.append({
+        "version": next_version,
+        "filename": filename,
+        "current": True,
+        "registered_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "note": "Live version",
+    })
+    registry[base_name] = existing
+    _save_registry(run_id, registry)
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:

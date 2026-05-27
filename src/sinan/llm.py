@@ -87,12 +87,36 @@ class MockLLMClient(LLMClient):
         })
 
 
+# Singleton instance cache, keyed by the env-signature at construction time.
+# Re-creating the SDK client per call wastes a connection pool and (for
+# providers that authenticate at construction) an auth roundtrip. Cache is
+# keyed on (provider, api_key, base_url, model) so changing any of these
+# between calls picks up the new config.
+_CLIENT_CACHE: dict[tuple, LLMClient] = {}
+
+
+def _cache_key() -> tuple:
+    return (
+        "anthropic" if os.getenv("ANTHROPIC_API_KEY") else "openai",
+        os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY") or "",
+        os.getenv("OPENAI_BASE_URL") or "",
+        os.getenv("LLM_MODEL") or os.getenv("ANTHROPIC_MODEL") or "",
+    )
+
+
 # Singleton instance
 def get_llm_client() -> LLMClient:
+    key = _cache_key()
+    cached = _CLIENT_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             import anthropic
-            return _AnthropicClient(os.getenv("ANTHROPIC_API_KEY", ""))
+            client = _AnthropicClient(os.getenv("ANTHROPIC_API_KEY", ""))
+            _CLIENT_CACHE[key] = client
+            return client
         except ImportError:
             _log.warning(
                 "ANTHROPIC_API_KEY is set but `anthropic` SDK is not installed; "
@@ -103,7 +127,9 @@ def get_llm_client() -> LLMClient:
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         try:
-            return _OpenAIClient(api_key)
+            client = _OpenAIClient(api_key)
+            _CLIENT_CACHE[key] = client
+            return client
         except ImportError:
             _log.warning(
                 "OPENAI_API_KEY is set but `openai` SDK is not installed; "
