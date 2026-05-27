@@ -287,7 +287,11 @@ def _commit_feature_router(state: CodingState) -> str:
     sprint_goals = sprint_contract.get("sprint_goals", [])
     sprint_feature_ids = {g.get("feature_id") for g in sprint_goals if g.get("feature_id")}
     sprint_features = [f for f in features if f.get("id") in sprint_feature_ids]
-    unfinished = [f for f in sprint_features if not f.get("passes")]
+    # A sprint-scoped feature is "done" if it either passed or hit the retry
+    # cap (blocked). Both should route forward to evaluator_qa so the sprint
+    # can finish; re-looping back to pick_feature would just re-select the
+    # blocked feature and spin forever.
+    unfinished = [f for f in sprint_features if not f.get("passes") and not f.get("blocked")]
     if unfinished:
         return "pick_feature"
     return "evaluator_qa"

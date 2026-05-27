@@ -38,16 +38,21 @@ def sprint_complete_node(state: CodingState) -> dict:
     feature_list = state.get("feature_list") or {}
     features = feature_list.get("features", [])
     passing = [f for f in features if f.get("passes")]
+    blocked = [f for f in features if f.get("blocked")]
     total = len(features)
 
     grade = state.get("evaluator_grade") or {}
 
+    # completion_pct counts passing features only. blocked features are NOT
+    # counted as done — they're an explicit "gave up after retry cap" signal.
+    # spec_complete fires only when no feature is left unblocked/unpassed.
     sprint_result = {
         "sprint_number": sprint,
         "total_features": total,
         "completed_features": len(passing),
+        "blocked_features": len(blocked),
         "completion_pct": int(len(passing) / total * 100) if total > 0 else 0,
-        "spec_complete": len(passing) == total,
+        "spec_complete": len(passing) + len(blocked) == total and len(blocked) == 0,
         "qa_grades": {
             "functionality": grade.get("functionality"),
             "product_depth": grade.get("product_depth"),

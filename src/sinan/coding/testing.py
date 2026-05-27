@@ -187,6 +187,19 @@ def run_qa_eval(run_id: str, criteria: dict) -> QAGrade:
             runner_results=[],
         )
 
+    # If every case is a placeholder (expected_to_pass=False), the runner
+    # cannot produce meaningful signal — by definition each "pass" would
+    # be a soft-pass-expecting-failure, and an LLM-side fail would force the
+    # sprint into a pointless fix loop. Defer to the LLM evaluator instead.
+    real_cases = [tc for tc in test_cases if tc.get("expected_to_pass", True)]
+    if not real_cases:
+        return QAGrade(
+            functionality=0, product_depth=0, visual_quality=0, code_quality=0,
+            overall_pass=True,
+            summary="(all test_cases are placeholders — runner skipped, deferring to LLM evaluator)",
+            runner_results=[],
+        )
+
     # Run each test case
     runner_results: list[dict] = []
     soft_pass_count = 0
