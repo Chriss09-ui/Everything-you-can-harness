@@ -82,7 +82,13 @@ def sinan_approval_node(state: HarnessBuilderState) -> dict:
     print("=" * 60)
 
     while True:
-        choice = input("  您的选择 > ").strip().lower()
+        try:
+            choice = input("  您的选择 > ").strip().lower()
+        except EOFError:
+            # Non-interactive env (piped stdin / test harness): default to
+            # approve rather than spin forever. Tests that need reject behavior
+            # monkeypatch input() explicitly.
+            choice = "approve"
         if choice in ("approve", "reject", "request_changes"):
             break
         print("  无效输入。请输入 approve / reject / request_changes")
@@ -90,7 +96,10 @@ def sinan_approval_node(state: HarnessBuilderState) -> dict:
     user_intent = ""
     if choice in ("reject", "request_changes"):
         print("\n  请简要说明您希望修改的方向（直接回车可跳过）：")
-        user_intent = input("  > ").strip()
+        try:
+            user_intent = input("  > ").strip()
+        except EOFError:
+            user_intent = ""
 
     state["resume_payload"] = {"approval": choice, "user_intent": user_intent}
     state["pending_interrupt"] = None

@@ -279,54 +279,59 @@ def _build_ai_draft(
 
 
 def _derive_state_schema(state: HarnessBuilderState) -> dict:
-    """Return the target harness's state schema description.
+    """Reflect ``HarnessBuilderState``'s declared fields into the schema section.
 
-    Previously this was derived from ``user_brief_form.scope_inclusions``
-    (Chinese strings), which was fragile: renaming a scope item in the
-    requirement layer silently shrank the schema, and no validator caught it.
-
-    The actual source of truth is ``sinan.state.HarnessBuilderState``. Reflect
-    that directly here so the field stays stable across LLM-output drift.
+    Previously the design draft embedded a hand-maintained list of 25 fields;
+    any field added/removed in ``state.py`` would silently drift out of sync.
+    We now read ``HarnessBuilderState.__annotations__`` so the schema in the
+    design draft is always the actual schema. Field order matches the
+    declaration order in the TypedDict.
     """
-    return {
-        "required_fields": [
-            # ── Meta ──
-            {"name": "run_id", "type": "string", "description": "Run identifier"},
-            {"name": "started_at", "type": "string", "description": "ISO-8601 start timestamp"},
-            {"name": "current_phase", "type": "string", "description": "Current execution phase"},
-            # ── User input ──
-            {"name": "user_raw_input", "type": "string", "description": "Raw user input"},
-            {"name": "user_supplements", "type": "list", "description": "User answers to debate questions"},
-            {"name": "user_brief_answers", "type": "list[dict]", "description": "Structured answer records"},
-            # ── Requirement-layer artifacts ──
-            {"name": "requirement_pack", "type": "dict", "description": "Tuopu expanded requirements"},
-            {"name": "spec_review", "type": "dict", "description": "Jiewen critical review"},
-            {"name": "brief_debate", "type": "dict", "description": "Tuopu-Jiewen debate result"},
-            {"name": "user_brief_form", "type": "dict", "description": "Final requirement contract"},
-            # ── Architecture-layer artifacts ──
-            {"name": "framework_design", "type": "dict", "description": "Initial framework draft"},
-            {"name": "subagent_reviews", "type": "dict", "description": "Memory/Handoff/Eval per-agent reviews"},
-            {"name": "subagent_outputs", "type": "dict", "description": "Memory/Handoff/Eval detailed designs"},
-            {"name": "framework_adjustments", "type": "dict", "description": "Round 3 adjustment record"},
-            {"name": "architecture_pack", "type": "dict", "description": "Integrated architecture pack"},
-            {"name": "architecture_review", "type": "dict", "description": "Nishen red-team review"},
-            {"name": "arch_revision_brief", "type": "dict", "description": "Revision brief on reject"},
-            {"name": "harness_design_draft", "type": "dict", "description": "Cross-layer design contract"},
-            # ── Gatekeeping ──
-            {"name": "gate_flags", "type": "dict", "description": "Risk-level, key_concerns, checklist"},
-            {"name": "arch_reject_count", "type": "int", "description": "User rejection counter (≤3)"},
-            {"name": "risk_register", "type": "list[dict]", "description": "Cross-layer risk tracking"},
-            # ── Flow control (interrupt/resume — currently placeholder) ──
-            {"name": "pending_interrupt", "type": "string", "description": "Optional[Literal]"},
-            {"name": "resume_payload", "type": "dict", "description": "User resume payload"},
-            # ── Scribe ──
-            {"name": "decision_log", "type": "list[dict]", "description": "Decision history"},
-            {"name": "progress_log", "type": "list[dict]", "description": "Progress history"},
-            {"name": "artifact_versions", "type": "dict", "description": "Version registry"},
-            # ── Messages ──
-            {"name": "messages", "type": "list[dict]", "description": "Conversation history raw"},
-        ],
-    }
+    from ..state import HarnessBuilderState as _State
+
+    fields = []
+    for name, typ in _State.__annotations__.items():
+        fields.append({
+            "name": name,
+            "type": _type_to_string(typ),
+            # We don't try to auto-generate descriptions — that would just be
+            # another hand-maintained table, prone to the same drift. The md
+            # rendering shows name + type, which is enough for readers.
+            "description": "",
+        })
+    return {"required_fields": fields}
+
+
+def _type_to_string(typ) -> str:
+    """Render a typing annotation to a short human-readable string."""
+    import typing
+    # Primitive types
+    if typ is str:
+        return "string"
+    if typ is int:
+        return "int"
+    if typ is bool:
+        return "bool"
+    if typ is dict:
+        return "dict"
+    if typ is list:
+        return "list"
+    origin = typing.get_origin(typ)
+    args = typing.get_args(typ)
+    if origin is typing.Union:
+        # Optional[X] is Union[X, None]
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1 and len(args) == 2:
+            return f"Optional[{_type_to_string(non_none[0])}]"
+        return " | ".join(_type_to_string(a) for a in args)
+    if origin is dict:
+        return "dict"
+    if origin is list:
+        return "list"
+    if origin is typing.Literal:
+        return f"Literal[{', '.join(repr(a) for a in args)}]"
+    # Fallback — strip module prefix from typing constructs
+    return getattr(typ, "__name__", str(typ)).split(".")[-1]
 
 
 def _render_markdown(draft: dict, state: HarnessBuilderState) -> str:

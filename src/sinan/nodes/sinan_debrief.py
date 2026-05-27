@@ -122,7 +122,12 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
         print()
 
         while True:
-            choice = input("    > ").strip().lower()
+            try:
+                choice = input("    > ").strip().lower()
+            except EOFError:
+                # ctrl-D / non-interactive env: treat as abort so we don't
+                # spin forever waiting for input that will never come.
+                choice = "abort"
             if choice in ("proceed", "abort"):
                 break
             print("    请输入 'proceed' 或 'abort'。")
