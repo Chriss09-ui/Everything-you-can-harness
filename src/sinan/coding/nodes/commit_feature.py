@@ -41,19 +41,25 @@ def commit_feature_node(state: CodingState) -> dict:
     run_id = state["run_id"]
     harness_dir = get_run_dir(run_id) / "harness"
 
-    # Mark feature as passed in feature_list.json
+    # Mark feature as passed in feature_list.json. Fail-fast if the file
+    # is missing — without it the next sprint's pick_feature would re-read
+    # a stale version and re-pick the same feature forever.
     fl_path = harness_dir / "feature_list.json"
-    if fl_path.exists():
-        with open(fl_path) as f:
-            feature_list = json.load(f)
-        for f_item in feature_list.get("features", []):
-            if f_item.get("id") == feature_id:
-                f_item["passes"] = True
-        with open(fl_path, "w") as f:
-            json.dump(feature_list, f, indent=2, ensure_ascii=False)
-        state["feature_list"] = feature_list
-    else:
-        append_progress_log(state["run_id"], "COMMIT_FEATURE", "feature_list.json not found")
+    if not fl_path.exists():
+        raise RuntimeError(
+            f"commit_feature: feature_list.json missing at {fl_path}. "
+            f"This usually means init_feature_list was skipped or generator "
+            f"wiped the file. Refusing to silently drop feature.passes=True; "
+            f"recover manually or rerun from a previous checkpoint."
+        )
+    with open(fl_path) as f:
+        feature_list = json.load(f)
+    for f_item in feature_list.get("features", []):
+        if f_item.get("id") == feature_id:
+            f_item["passes"] = True
+    with open(fl_path, "w") as f:
+        json.dump(feature_list, f, indent=2, ensure_ascii=False)
+    state["feature_list"] = feature_list
 
     # Update claude-progress.txt
     progress_path = harness_dir / "claude-progress.txt"

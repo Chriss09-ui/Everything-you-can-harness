@@ -24,7 +24,10 @@ import json
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
 from ..prompts import get_prompt
-from ..artifacts import append_progress_log, append_decision_log, finalize_phase, load_state_or_file
+from ..artifacts import (
+    append_progress_log, append_decision_log, finalize_phase,
+    load_state_or_file, update_run_state,
+)
 
 
 def sinan_debrief_node(state: HarnessBuilderState) -> dict:
@@ -153,16 +156,11 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
 
     answered = sum(1 for a in answers if a is not None)
     append_progress_log(
-        state["run_id"], "WAIT_USER_BRIEF",
+        state["run_id"], "SINAN_DEBRIEF",
         f"User answered {answered}/{len(answers)} questions, {skipped} skipped"
     )
     finalize_phase(state["run_id"])
     return state
-
-
-def update_run_state(run_id: str, phase: str) -> None:
-    from ..artifacts import update_run_state as _update
-    _update(run_id, phase)
 
 
 def _parse_response(raw: str) -> dict:

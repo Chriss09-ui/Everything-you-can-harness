@@ -64,6 +64,9 @@ def sprint_complete_node(state: CodingState) -> dict:
     # propagates values a node RETURNS, so router-side mutations are dropped.
     # sprint_contract MUST also be cleared so sprint_plan re-plans the next
     # sprint instead of reusing sprint 1's agreed contract.
+    # _is_first_init MUST be flipped to False so sprint 2's session_init
+    # skips the 5 init branches (otherwise they re-write feature_list.json,
+    # claude-progress.txt, and re-run git init, nuking sprint 1's work).
     next_sprint = sprint + 1
     updates = {
         "sprint_result": sprint_result,
@@ -75,8 +78,6 @@ def sprint_complete_node(state: CodingState) -> dict:
         "feature_retry_count": 0,
         "sanity_retry_count": 0,
         "sprint_contract": None,
-        "sprint_plan": None,
-        "sprint_negotiation": None,
         "evaluator_grade": None,
         "bug_report": None,
         "fix_result": None,
@@ -85,6 +86,7 @@ def sprint_complete_node(state: CodingState) -> dict:
         "test_result": None,
         "implement_result": None,
         "triage_result": None,
+        "_is_first_init": False,
     }
 
     append_progress_log(state["run_id"], "SPRINT_COMPLETE",

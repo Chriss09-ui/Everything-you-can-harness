@@ -130,6 +130,14 @@ def _derive_test_cases(brief: dict) -> list[dict]:
           "expected_output_keys": [...],  # required top-level keys in output
           "expected_to_pass": True        # False ⇒ expects the harness to refuse
         }
+
+    **Placeholder rule**: derived cases have empty ``input`` / empty
+    ``expected_output_keys`` by default, so they're marked
+    ``expected_to_pass=False`` to prevent the runner from treating them as
+    "hard pass" evidence. If the user fills in real input/keys, they're
+    expected to also flip ``expected_to_pass`` to True (otherwise the runner
+    will count a successful run as a "soft pass" — passing against an
+    expectation of failure, which contributes nothing to overall_pass).
     """
     if not brief:
         return []
@@ -141,12 +149,15 @@ def _derive_test_cases(brief: dict) -> list[dict]:
     success_criteria = brief.get("success_criteria") or []
     cases = []
     for idx, criterion in enumerate(success_criteria, 1):
+        # Derived cases start as placeholders — runner must not consider
+        # them as hard evidence of correctness.
         cases.append({
             "id": f"tc_{idx:03d}",
             "scenario": criterion,
             "input": "",                  # placeholder — user fills in
             "expected_output_keys": [],    # placeholder
-            "expected_to_pass": True,
+            "expected_to_pass": False,     # placeholder, see docstring
+            "is_placeholder": True,
         })
     return cases
 

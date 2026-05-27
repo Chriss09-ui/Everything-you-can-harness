@@ -50,12 +50,8 @@ def register_coding_mock_responses() -> None:
         "summary": "Feature implemented via mock",
     }, ensure_ascii=False))
 
-    MockLLMClient.register("自评", json.dumps({
-        "completion_pct": 100,
-        "features_completed": ["feat_001"],
-        "features_remaining": [],
-        "self_assessment": "所有功能均已实现",
-    }, ensure_ascii=False))
+    # (The "自评" mock was for the now-deleted generator_review self-eval node.
+    # Removing it; if you reintroduce a self-eval node, re-add a mock here.)
 
     MockLLMClient.register("质量评估", json.dumps({
         "functionality": 8,

@@ -60,22 +60,18 @@ def test_coding_e2e_happy_path(monkeypatch):
     # the flow by manually stepping through key states
     final = graph.invoke(state)
 
-    # Verify planner ran
-    assert final["current_phase"] in [
-        "PLANNER", "SPRINT_PLAN", "SPRINT_NEGOTIATE", "SPRINT_SETUP",
-        "SESSION_INIT", "INIT_PROGRESS", "INIT_SCRIPT", "INIT_FEATURE_LIST",
-        "INIT_GIT", "INIT_LOOP_ENTRY", "SESSION_SETUP",
-        "READ_PWD", "READ_PROGRESS", "READ_FEATURE_LIST", "READ_GIT_LOG",
-        "SANITY_CHECK", "PICK_FEATURE",
-        "IMPLEMENT_FEATURE", "TEST_FEATURE", "COMMIT_FEATURE",
-        "GENERATOR_REVIEW", "EVALUATOR_QA", "SPRINT_COMPLETE",
-    ]
+    # Final state MUST be either the end of the happy path (SPRINT_COMPLETE),
+    # or queued for the next sprint (EVALUATOR_QA just finished). If it's
+    # anything earlier, the pipeline has regressed and silently broken.
+    assert final["current_phase"] in {
+        "SPRINT_COMPLETE",       # any sprint finished
+        "EVALUATOR_QA",          # just finished grading, about to complete
+    }, f"unexpected final phase: {final['current_phase']}"
 
-    # Verify spec was generated
-    assert final.get("spec") is not None or final.get("current_phase") == "PLANNER"
+    # Spec MUST be present — planner is the first coding-layer node, so if it
+    # didn't run, nothing else makes sense.
+    assert final.get("spec") is not None, "planner did not produce spec"
 
-    # Verify run directory has artifacts
+    # Run directory must exist (sanity).
     run_dir = get_run_dir(run_id)
-    # spec.json may or may not be written depending on mock resolution
-    # Just verify the run directory exists
     assert run_dir.exists()
