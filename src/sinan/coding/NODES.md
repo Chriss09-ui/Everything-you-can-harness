@@ -68,7 +68,7 @@ Routes:
 
 ---
 
-## 27 Node 合约
+## 26 Node 合约
 
 ### 1. planner
 
@@ -212,7 +212,7 @@ Routes:
 | Reads | `feature_list`, `sprint_contract` |
 | Writes | `current_feature_id`, `current_feature_status`, `feature_retry_count=0` |
 | Artifacts | (无) |
-| Routes | → `implement_feature` (有 feature) / → `generator_review` (无 feature) |
+| Routes | → `implement_feature` (有 feature) / → `evaluator_qa` (无 feature) |
 
 ### 20. implement_feature
 
@@ -245,11 +245,13 @@ Routes:
 | Agent | Generator |
 | Loop | Feature |
 | Reads | `current_feature_id`, `feature_list` |
-| Writes | `feature_list` (更新 passes=true), `current_feature_id=None` |
+| Writes | `feature_list` (更新 passes/blocked), `current_feature_id=None` |
 | Artifacts | `feature_list.json`, `claude-progress.txt`, git commit |
-| Routes | → `pick_feature` (有剩余) / → `generator_review` (sprint 完成) |
+| Routes | → `pick_feature` (有剩余) / → `evaluator_qa` (sprint 完成) |
 
 > **交接点：** 写入 `feature_list.json` 是 `pick_feature` 下轮循环的输入契约。
+> 测试通过标 `passes=True`；retry 用尽仍失败则标 `blocked=True, passes=False` —— 代码仍 git-commit 保
+> 留进度，但 `sprint_complete` 不会把 blocked 计入"完成"，`pick_feature` 在本 sprint 内不再选它。
 
 ### 23. evaluator_qa
 
@@ -277,7 +279,7 @@ Routes:
 | Agent | Evaluator |
 | Loop | Fix |
 | Reads | `evaluator_grade` |
-| Writes | `bug_report`, `fix_loop_count++` |
+| Writes | `bug_report` |
 | Artifacts | `bug_report.json` (versioned) |
 | Routes | → `generator_fix` (always) |
 

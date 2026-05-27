@@ -71,12 +71,12 @@ src/sinan/
 ├── nodes/                   # 需求层 + 架构层 node 实现
 │   └── NODES.md             # ⭐ Node 合约表（source of truth）
 └── coding/                  # 研发层包
-    ├── graph.py             # 研发层 LangGraph（27 nodes）
+    ├── graph.py             # 研发层 LangGraph（26 nodes）
     ├── state.py             # CodingState schema
     ├── prompts.py           # Planner / Generator / Evaluator prompts
     ├── git.py / testing.py  # git 与测试封装
     ├── mock_responses.py    # 研发层 mock 输出
-    ├── nodes/               # 27 个 node 模块
+    ├── nodes/               # 26 个 node 模块
     └── NODES.md             # ⭐ 研发层 Node 合约表
 
 tests/                       # smoke + e2e mock tests
