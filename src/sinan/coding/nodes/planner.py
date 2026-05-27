@@ -45,11 +45,12 @@ def planner_node(state: CodingState) -> dict:
         append_progress_log(state["run_id"], "PLANNER",
             "Loaded harness_design_draft.json from disk")
 
-    # Schema guard at the architecture→coding boundary. We only enforce when
-    # the draft carries final_spec's version marker — otherwise it's a hand-
-    # rolled fixture (e.g. coding-layer-only test), and strict validation
-    # would just impede local development.
-    if draft and draft.get("version"):
+    # Schema guard at the architecture→coding boundary. Always enforce —
+    # the contract is that harness_design_draft carries the required fields
+    # (version, use_case, graph, phase_sequence, ...). Tests that pass in a
+    # hand-rolled fixture must include those fields; the schema is the codified
+    # contract and shouldn't be silently bypassed.
+    if draft:
         validate_artifact(draft, "harness_design_draft")
 
     client = get_llm_client()

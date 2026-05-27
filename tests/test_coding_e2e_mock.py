@@ -52,9 +52,23 @@ def test_coding_e2e_happy_path(monkeypatch):
     run_id = f"test_coding_e2e_{uuid.uuid4().hex[:8]}"
     ensure_run_dir(run_id)
 
+    # A valid harness_design_draft carries the full schema (see
+    # sinan/validation.py _REQUIRED_FIELDS["harness_design_draft"]). The
+    # planner now enforces it strictly — a hand-rolled fixture that's missing
+    # any required field would surface as a ValueError from the schema guard.
     draft = {
+        "version": "1.0",
+        "use_case": "Test coding harness",
         "primary_goal": "Test coding harness",
-        "use_case": "Test",
+        "scope": {"inclusions": [], "exclusions": []},
+        "success_criteria": ["smoke test passes"],
+        "test_cases": [],
+        "graph": {"nodes": [], "edges": [], "entry_point": "start", "end_state": "END"},
+        "phase_sequence": ["plan", "implement", "review"],
+        "memory_module": {},
+        "handoff_protocol": {},
+        "eval_placements": {},
+        "state_schema": {"required_fields": []},
     }
 
     state = make_coding_state(run_id, draft)
