@@ -63,12 +63,25 @@ def load_state_or_file(
     filename: Optional[str] = None,
     default: Any = None,
 ) -> Any:
-    """Read ``state[key]`` if present; otherwise read ``runs/<run_id>/<filename>``.
+    """Read ``state[key]`` if present and not None; otherwise read disk.
 
     Implements the project's "files are the only handoff protocol" principle
     at node read time: prefer the hot in-memory state, but fall back to disk
     so that any node can be re-entered after a crash or invoked independently
     (e.g. via --from-design / --from-brief).
+
+    Presence rule (revised from the old truthy-check):
+      - ``key`` not in state           → fall through to disk
+      - ``state[key]`` is ``None``     → fall through to disk (matches the
+        ``make_initial_state`` convention that ``None`` means "never produced
+        by any node in this run")
+      - ``state[key]`` is any other value (including ``{}``, ``[]``, ``""``,
+        or ``False``) → return it. The node explicitly wrote that value.
+
+    The old ``if value:`` check treated falsy-but-present values (especially
+    empty lists/dicts that a node had legitimately written) as "missing" and
+    silently read stale disk content. The new rule uses ``is not None`` so an
+    upstream that produces empty still wins over disk.
 
     Args:
         state: the LangGraph state dict (must contain "run_id").
@@ -80,9 +93,8 @@ def load_state_or_file(
 
     Returns the state value, the loaded JSON, or ``default``.
     """
-    value = state.get(key)
-    if value:
-        return value
+    if key in state and state[key] is not None:
+        return state[key]
     run_id = state.get("run_id")
     if not run_id:
         return {} if default is None else default
