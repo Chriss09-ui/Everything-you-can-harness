@@ -74,7 +74,11 @@ def implement_feature_node(state: CodingState) -> dict:
     result = parse_and_validate_artifact(raw, "implement_result")
 
     for f in result.get("files", []):
-        target = harness_dir / f["path"]
+        target = (harness_dir / f["path"]).resolve()
+        if not target.is_relative_to(harness_dir.resolve()):
+            append_progress_log(state["run_id"], "IMPLEMENT_FEATURE",
+                f"Blocked path traversal: {f['path']}")
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f["content"])
 

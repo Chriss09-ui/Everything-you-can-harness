@@ -177,7 +177,7 @@ Routes:
 | Agent | 逆审 (Nishen) |
 | Layer | 架构层 |
 | Reads | `architecture_pack` |
-| Writes | `architecture_review`, `current_phase`, `artifact_versions`, `risk_register`, `gate_flags` |
+| Writes | `architecture_review`, `current_phase`, `artifact_versions`, `risk_register` |
 | Artifacts | `architecture_review.json` |
 | Routes | → `approval_gate` (linear) |
 

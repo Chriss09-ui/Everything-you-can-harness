@@ -291,13 +291,20 @@ def register_mock_responses() -> None:
 
     # 逆审修订简报 (Arch Reviser) — triggered by "请基于以上信息生成结构化的修订简报"
     MockLLMClient.register("生成结构化的修订简报", json.dumps({
-        "revision_focus": "缩小过度设计、补全 handoff 缺口",
-        "must_fix": [
-            "为 sinan_debrief 增加用户输入格式校验",
-            "为 LLM 调用增加超时保护",
+        "revision_summary": "缩小过度设计、补全 handoff 缺口",
+        "specific_issues": [
+            {
+                "issue": "sinan_debrief 缺少用户输入格式校验",
+                "in_previous_design": "无校验逻辑",
+                "fix_instruction": "为 sinan_debrief 增加用户输入格式校验"
+            },
+            {
+                "issue": "LLM 调用无超时保护",
+                "in_previous_design": "所有 LLM 调用直接 await",
+                "fix_instruction": "为 LLM 调用增加超时保护"
+            },
         ],
-        "preserve": ["契约化交接", "四步辩论结构"],
-        "user_intent_summary": "降低复杂度，加强失败模式覆盖",
+        "preserve_points": ["契约化交接", "四步辩论结构"],
     }, ensure_ascii=False))
 
     # 子代理评审报告 — all three review calls can share this shape in mock mode.

@@ -80,7 +80,7 @@ _REQUIRED_FIELDS = {
     "arch_revision_brief": {
         # arch_revise compiles user feedback + reviewer findings into
         # actionable changes for the next framework_design round.
-        "revision_focus", "must_fix", "preserve",
+        "revision_summary", "specific_issues", "preserve_points",
     },
     "harness_design_draft": {
         # cross-layer contract: architecture → coding. This is the most
