@@ -78,7 +78,7 @@ def evaluator_qa_node(state: CodingState) -> dict:
             append_progress_log(state["run_id"], "EVALUATOR_QA",
                 "Overriding LLM overall_pass=True because runner saw failures")
         grade["overall_pass"] = False
-    elif grade.get("overall_pass") is None:
+    elif "overall_pass" not in grade:
         grade["overall_pass"] = qa_result.overall_pass
 
     write_json(state["run_id"], "evaluator_grade.json", grade, versioned=True)

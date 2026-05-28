@@ -91,9 +91,11 @@ Eval Placements:
     arch["subagent_outputs"] = subagent_outputs
     arch["framework_design"] = framework
     arch["design_evolution"] = {
-        "initial_framework": state.get("framework_design"),
-        "subagent_reviews": state.get("subagent_reviews"),
-        "framework_adjustments": state.get("framework_adjustments"),
+        "initial_framework": load_state_or_file(state, "framework_design"),
+        "subagent_reviews": load_state_or_file(state, "subagent_reviews"),
+        "framework_adjustments": load_state_or_file(
+            state, "framework_adjustments", filename="framework_adjustment.json",
+        ),
     }
 
     # Versioned write
