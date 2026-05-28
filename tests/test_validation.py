@@ -89,3 +89,35 @@ def test_framework_adjustment_rejects_garbage():
 def test_spec_requires_features():
     with pytest.raises(ValueError, match="missing required fields.*features"):
         validate_artifact({"name": "x", "success_criteria": []}, "spec")
+
+
+# ── Architecture layer: arch_revision_brief schema ──
+# Pin that the schema matches what the prompt actually asks the LLM to produce
+# AND what the consumer nodes (framework_design / arch_revise / zonggong_integrate)
+# actually read. Drift here means either:
+#   - LLM gets a prompt asking for X but schema requires Y → parse always fails
+#   - Consumer code reads field A but schema enforces B → field silently absent
+
+def test_arch_revision_brief_accepts_real_prompt_output():
+    """Real-shape output from the arch_revise prompt must pass validation."""
+    data = {
+        "revision_summary": "shrink over-engineering",
+        "specific_issues": [
+            {"issue": "x", "in_previous_design": "y", "fix_instruction": "z"}
+        ],
+        "preserve_points": ["artifact-based handoff"],
+    }
+    validate_artifact(data, "arch_revision_brief")
+
+
+def test_arch_revision_brief_rejects_legacy_field_names():
+    """If someone reverts the schema to the old `revision_focus/must_fix/preserve`
+    names (which the prompt does NOT produce), validation must fail on real
+    LLM output. This protects against the schema/prompt drift we fixed."""
+    data = {
+        "revision_focus": "shrink over-engineering",
+        "must_fix": ["item1"],
+        "preserve": ["artifact-based handoff"],
+    }
+    with pytest.raises(ValueError, match="missing required fields"):
+        validate_artifact(data, "arch_revision_brief")
