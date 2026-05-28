@@ -1,6 +1,6 @@
 # 研发层 (Coding Layer) — AI 上手指南
 
-> 给接手"研发层"开发的 AI 的第一份必读。研发层是三层里**最复杂**的一层（26 个 node、6 个条件路由、4 重嵌套循环、并行 fan-out/fan-in），读完这一份再去查代码就不会迷路。
+> 给接手"研发层"开发的 AI 的第一份必读。研发层是三层里**最复杂**的一层（26 个 node、11 个路由函数、4 重嵌套循环、并行 fan-out/fan-in），读完这一份再去查代码就不会迷路。
 >
 > 改完代码记得回到 [CLAUDE.md](../CLAUDE.md#改动同步原则强制) 查改动同步清单。
 
@@ -98,7 +98,7 @@
                                                                                   evaluator_qa  generator_fix
 ```
 
-代码定义见 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py)（26 nodes + 6 routers + 2 fan-out routers via `Send`）。
+代码定义见 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py)（26 nodes + 11 个路由函数，其中 2 个 fan-out 通过 `Send` API）。
 
 ---
 
@@ -177,21 +177,21 @@
 
 ## 6. 路由规范
 
-6 个 router 函数 + 2 个 fan-out router（通过 `Send` API），全部在 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) 底部：
+11 个路由函数（9 个 routing decision + 2 个 fan-out，后者通过 `Send` API），全部在 [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) 底部：
 
 | Router | 入口 node | 决策依据 | 出口 |
 |---|---|---|---|
-| `_session_init_fanout` (L224) | `session_init` | `_is_first_init` | 5 并行 init / 跳到 setup |
-| `_session_setup_fanout` (L240) | `session_setup_entry` | 无条件 | 4 并行 read |
-| `_sprint_negotiate_router` (L250) | `sprint_negotiate` | `sprint_contract.agreed` / `negotiate_round > 3` | `sprint_setup` / `sprint_plan` |
-| `_sanity_check_router` (L260) | `sanity_check` | `sanity_pass` / `sanity_retry_count ≥ 2` | `pick_feature` / `bug_triage` |
-| `_pick_feature_router` (L268) | `pick_feature` | 有无 `current_feature_id` | `implement_feature` / `evaluator_qa` |
-| `_test_feature_router` (L274) | `test_feature` | `test_result.passed` / `feature_retry_count ≥ 2` | `commit_feature` / `implement_feature` |
-| `_commit_feature_router` (L284) | `commit_feature` | sprint 内还有未完成 feature? | `pick_feature` / `evaluator_qa` |
-| `_evaluator_qa_router` (L297) | `evaluator_qa` | `evaluator_grade.overall_pass` | `sprint_complete` / `evaluator_bugs` |
-| `_evaluator_bugs_router` (L304) | `evaluator_bugs` | 总是 | `generator_fix` |
-| `_generator_fix_router` (L308) | `generator_fix` | `fix_result.verified` / `fix_loop_count ≥ 2` | `evaluator_qa` / `generator_fix` |
-| `_sprint_complete_router` (L318) | `sprint_complete` | `spec_complete` / `sprint_number ≥ 10` | `END` / `sprint_plan` / `RuntimeError` |
+| `_session_init_fanout` | `session_init` | `_is_first_init` | 5 并行 init / 跳到 setup |
+| `_session_setup_fanout` | `session_setup_entry` | 无条件 | 4 并行 read |
+| `_sprint_negotiate_router` | `sprint_negotiate` | `sprint_contract.agreed` / `negotiate_round > 3` | `sprint_setup` / `sprint_plan` |
+| `_sanity_check_router` | `sanity_check` | `sanity_pass` / `sanity_retry_count ≥ 2` | `pick_feature` / `bug_triage` |
+| `_pick_feature_router` | `pick_feature` | 有无 `current_feature_id` | `implement_feature` / `evaluator_qa` |
+| `_test_feature_router` | `test_feature` | `test_result.passed` / `feature_retry_count ≥ 2` | `commit_feature` / `implement_feature` |
+| `_commit_feature_router` | `commit_feature` | sprint 内还有未完成 feature? | `pick_feature` / `evaluator_qa` |
+| `_evaluator_qa_router` | `evaluator_qa` | `evaluator_grade.overall_pass` | `sprint_complete` / `evaluator_bugs` |
+| `_evaluator_bugs_router` | `evaluator_bugs` | 总是 | `generator_fix` |
+| `_generator_fix_router` | `generator_fix` | `fix_result.verified` / `fix_loop_count ≥ 2` | `evaluator_qa` / `generator_fix` |
+| `_sprint_complete_router` | `sprint_complete` | `spec_complete` / `sprint_number ≥ 10` | `END` / `sprint_plan` / `RuntimeError` |
 
 ### 上限值（动这些会改变循环语义，谨慎）
 
@@ -237,7 +237,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) | 26 个 node 注册 + 6 router + 2 fan-out |
+| [src/sinan/coding/graph.py](../src/sinan/coding/graph.py) | 26 个 node 注册 + 11 路由函数（9 router + 2 fan-out） |
 | [src/sinan/coding/state.py](../src/sinan/coding/state.py) | `CodingState` + `make_coding_state()` |
 | [src/sinan/coding/nodes/](../src/sinan/coding/nodes/) | 26 个 node 模块 |
 | [src/sinan/coding/prompts.py](../src/sinan/coding/prompts.py) | Planner / Generator / Evaluator / Initializer / Negotiator prompts |

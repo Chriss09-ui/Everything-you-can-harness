@@ -156,9 +156,9 @@ approval == "reject" / "request_changes"
 | `architecture_pack` | dict | `zonggong_integrate` | `architecture_challenge`, `approval_gate`, `sinan_approval`, `final_spec` |
 | `architecture_review` | dict | `architecture_challenge` | `approval_gate`, `sinan_approval`, `arch_revise` |
 | `arch_revision_brief` | dict | `arch_revise` | `framework_design`（重入轮次） |
-| `gate_flags` | `GateFlags` TypedDict | `architecture_challenge`, `approval_gate` | router |
+| `gate_flags` | `GateFlags` TypedDict | `approval_gate` | router |
 | `resume_payload` | dict | `sinan_approval` | router |
-| `arch_reject_count` | int | `arch_revise` (++) | `_approval_outcome_router` |
+| `arch_reject_count` | int | `sinan_approval` (++) | `_approval_outcome_router` |
 | `risk_register` | list[dict] | `architecture_challenge` | 跨层风险跟踪 |
 | `harness_design_draft` | dict | `final_spec` | 研发层 |
 
