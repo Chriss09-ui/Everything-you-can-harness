@@ -16,7 +16,7 @@
   box-shadow:
     0 0 40px 12px rgba(59, 130, 246, 0.35),
     0 0 80px 30px rgba(59, 130, 246, 0.18),
-    0 0 140px 60px rgba(59, 130, 246, 0.08);
+    0 0 140px 60px rgba(59, 130, 246, 0.08) !important;
   animation: halo-blink 3s ease-in-out infinite;
   transition: box-shadow 0.4s ease;
 }
@@ -24,7 +24,7 @@
   box-shadow:
     0 0 50px 16px rgba(59, 130, 246, 0.5),
     0 0 100px 40px rgba(59, 130, 246, 0.28),
-    0 0 160px 70px rgba(59, 130, 246, 0.12);
+    0 0 160px 70px rgba(59, 130, 246, 0.12) !important;
   animation: halo-blink-fast 2s ease-in-out infinite;
 }
 

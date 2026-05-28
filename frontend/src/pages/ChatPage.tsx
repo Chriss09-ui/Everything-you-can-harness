@@ -40,7 +40,7 @@ function HomeView() {
         </div>
 
         <div
-          className="glow-halo bg-surface rounded-xl shadow-input transition-shadow focus-within:shadow-input-focus pt-5 px-6 pb-4 animate-fade-up"
+          className="glow-halo bg-surface rounded-xl pt-5 px-6 pb-4 animate-fade-up"
           style={{ animationDelay: "0.06s" }}
         >
           <textarea
@@ -50,7 +50,7 @@ function HomeView() {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
             }}
             placeholder="请输入任务，交给我来帮你完成"
-            className="w-full resize-none border-none bg-transparent text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
+            className="w-full resize-none border-none bg-transparent text-ink text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
           />
           <div className="flex items-center justify-end mt-2">
             <button
