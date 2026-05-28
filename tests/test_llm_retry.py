@@ -106,3 +106,59 @@ def test_backoff_actually_sleeps(monkeypatch):
     elapsed = time.time() - start
     # First retry sleeps 0.05s, second sleeps 0.10s → ≥ 0.15s total.
     assert elapsed >= 0.14, f"expected ≥ 0.14s of backoff, got {elapsed:.3f}s"
+
+
+def test_content_none_does_not_retry():
+    """OpenAI finish_reason=length / refusal returns content=None. Retrying
+    the identical prompt + identical token budget just burns quota; fail fast.
+    """
+    calls = {"n": 0}
+
+    class _NoneMsg:
+        content = None
+
+    class _NoneChoice:
+        message = _NoneMsg()
+        finish_reason = "length"
+
+    class _NoneResp:
+        choices = [_NoneChoice()]
+
+    def make_client():
+        c = _OpenAIClient.__new__(_OpenAIClient)
+        c.model = "m"
+
+        class _Completions:
+            def create(self, **kwargs):
+                calls["n"] += 1
+                return _NoneResp()
+
+        c.client = type("Inner", (), {"chat": type("C", (), {"completions": _Completions()})()})()
+        return c
+
+    with pytest.raises(Exception) as exc_info:
+        make_client().generate("sys", "user")
+    # Content-shape error raised once, no retries.
+    assert calls["n"] == 1, f"expected 1 attempt (non-retryable), got {calls['n']}"
+    assert "content" in str(exc_info.value).lower() or "finish_reason" in str(exc_info.value).lower(), (
+        f"expected a content-shape error message, got {exc_info.value!r}"
+    )
+
+
+def test_openai_passes_max_tokens():
+    """max_tokens=4096 must actually reach the SDK call — otherwise long
+    outputs silently truncate to the model's lower default."""
+    captured = {}
+
+    class _Completions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeResponse("ok")
+
+    c = _OpenAIClient.__new__(_OpenAIClient)
+    c.model = "m"
+    c.client = type("Inner", (), {"chat": type("C", (), {"completions": _Completions()})()})()
+    c.generate("sys", "user")
+    assert captured.get("max_tokens") == 4096, (
+        f"expected max_tokens=4096 to be sent, got {captured.get('max_tokens')}"
+    )

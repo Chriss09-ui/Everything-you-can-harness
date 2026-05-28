@@ -28,7 +28,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from ..validation import parse_and_validate_artifact
+from ..validation import parse_llm_json, validate_artifact
 
 
 def arch_revise_node(state: HarnessBuilderState) -> dict:
@@ -66,7 +66,15 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     )
 
     raw = client.generate(system, user)
-    revision_brief = parse_and_validate_artifact(raw, "arch_revision_brief")
+    revision_brief = parse_llm_json(raw, "arch_revision_brief")
+
+    # revision_round is the round *this brief is asking Zonggong to apply*.
+    # It equals arch_reject_count (incremented by sinan_approval before this
+    # node runs), so first rejection → revision_round=1. Attached AFTER
+    # parsing the LLM output because the LLM doesn't know this value; we
+    # then validate the assembled artifact (schema requires revision_round).
+    revision_brief["revision_round"] = revision_round
+    validate_artifact(revision_brief, "arch_revision_brief")
 
     write_json(state["run_id"], "arch_revision_brief.json", revision_brief)
     state["arch_revision_brief"] = revision_brief

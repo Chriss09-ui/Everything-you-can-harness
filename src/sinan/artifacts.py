@@ -13,6 +13,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 RUNS_DIR = PROJECT_ROOT / "runs"
 _VERSION_REGISTRY = "version_registry.json"
 
+# run_id may originate from CLI --from-brief / --from-design, so treat it as
+# untrusted. ``../``, absolute paths, or hidden-dot prefixes would let a user
+# escape ``runs/<run_id>/`` and read/write arbitrary locations. Lock to a
+# conservative character set; everything else is rejected at the entry point
+# instead of getting quietly joined past ``RUNS_DIR``.
+import re as _re
+_RUN_ID_RE = _re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_run_id(run_id: str) -> None:
+    if not isinstance(run_id, str) or not _RUN_ID_RE.match(run_id):
+        raise ValueError(
+            f"invalid run_id {run_id!r}: must be non-empty and match "
+            f"{_RUN_ID_RE.pattern}"
+        )
+
 # Basenames that LLM-driven writes (implement_feature, generator_fix) must
 # NEVER overwrite. ``init.sh`` is the acute risk: it is written by init_script
 # from a hardcoded template and later executed via ``bash init.sh`` in
@@ -154,6 +170,7 @@ def get_artifact_summary(run_id: str) -> dict:
 
 
 def get_run_dir(run_id: str) -> Path:
+    _validate_run_id(run_id)
     return RUNS_DIR / run_id
 
 

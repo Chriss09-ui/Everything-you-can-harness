@@ -17,6 +17,12 @@ Artifacts:
 Routes:
     → pick_feature  when sanity_pass=true
     → bug_triage    when sanity_pass=false
+
+Note: last_good_commit is NOT updated here. commit_feature already advances
+it via ``git_save_good_commit`` whenever a feature passes for real; having
+sanity_check also touch it would race and risk backing the revert target
+against an unrelated SHA. The prior line ``state["last_good_commit"] =
+state.get("last_good_commit")`` was an obvious no-op — removed.
 """
 from __future__ import annotations
 from ..state import CodingState
@@ -38,7 +44,6 @@ def sanity_check_node(state: CodingState) -> dict:
     state["current_phase"] = "SANITY_CHECK"
 
     if result.passed:
-        state["last_good_commit"] = state.get("last_good_commit")
         append_decision_log(state["run_id"], {
             "phase": "SANITY_CHECK",
             "type": "sanity_pass",

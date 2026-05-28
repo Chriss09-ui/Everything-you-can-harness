@@ -57,6 +57,27 @@ _NON_RETRYABLE_EXC_NAMES = frozenset({
     "UnprocessableEntityError",
 })
 
+# Content-shape errors that we raised ourselves. These look like transient
+# exceptions but aren't: ``content=None`` from OpenAI typically means
+# finish_reason=length (output truncated by max_tokens) or refusal — either
+# way, retrying the identical prompt with the identical token budget will
+# produce the identical result, so we'd just burn quota +60s of backoff.
+# Defined as plain ``Exception`` subclasses with stable names so the retry
+# loop can match them by name without importing this module's internals.
+class _LLMContentEmpty(Exception):
+    """LLM returned no choices."""
+
+
+class _LLMContentNone(Exception):
+    """LLM returned choices[0].message.content=None — usually finish_reason=length
+    or refusal. Not transient: same prompt + same budget yields same output."""
+
+
+_NON_RETRYABLE_CONTENT_ERRORS = frozenset({
+    _LLMContentEmpty.__name__,
+    _LLMContentNone.__name__,
+})
+
 
 def _should_retry(exc: Exception) -> bool:
     """Decide whether to retry a failed LLM call.
@@ -64,9 +85,13 @@ def _should_retry(exc: Exception) -> bool:
     Both openai and anthropic SDKs raise subclasses with names like
     ``BadRequestError`` and ``RateLimitError``. We match by class name so we
     don't have to import either SDK at module load. 429 / 5xx fall through to
-    "retry"; explicit 4xx-request-shape errors don't.
+    "retry"; explicit 4xx-request-shape errors and our own content-shape
+    errors (``_LLMContentNone`` / ``_LLMContentEmpty``) don't.
     """
-    return type(exc).__name__ not in _NON_RETRYABLE_EXC_NAMES
+    return (
+        type(exc).__name__ not in _NON_RETRYABLE_EXC_NAMES
+        and type(exc).__name__ not in _NON_RETRYABLE_CONTENT_ERRORS
+    )
 
 
 class LLMClient(ABC):
@@ -183,8 +208,11 @@ class _OpenAIClient(LLMClient):
 
     def generate(self, system: str, user: str) -> str:
         # Retry with exponential backoff on transient errors (network, 429,
-        # 5xx, empty response). 4xx request-shape errors are NOT retried —
-        # the next attempt would fail the same way and we'd just burn quota.
+        # 5xx). 4xx request-shape errors and content-shape errors (None /
+        # empty) are NOT retried — the next attempt would fail the same way
+        # and we'd just burn quota. Symmetric to _AnthropicClient below
+        # (max_tokens=4096) so provider swaps don't silently re-introduce
+        # truncation-driven content=None failures.
         last_err: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
@@ -195,13 +223,17 @@ class _OpenAIClient(LLMClient):
                         {"role": "user", "content": user},
                     ],
                     temperature=0.3,
+                    max_tokens=4096,
                 )
                 if not response.choices:
-                    raise ValueError("LLM returned empty choices list")
+                    raise _LLMContentEmpty(
+                        f"finish_reason={response.choices[0].finish_reason if response.choices else 'n/a'}"
+                    )
                 content = response.choices[0].message.content
                 if content is None:
-                    raise ValueError("LLM returned None content (possible finish_reason="
-                                     f"{response.choices[0].finish_reason})")
+                    raise _LLMContentNone(
+                        f"finish_reason={response.choices[0].finish_reason}"
+                    )
                 return content
             except Exception as exc:
                 last_err = exc
@@ -234,8 +266,15 @@ class _AnthropicClient(LLMClient):
                     messages=[{"role": "user", "content": user}],
                 )
                 if not response.content:
-                    raise ValueError("Anthropic returned empty content block list")
-                return response.content[0].text
+                    raise _LLMContentEmpty(
+                        f"stop_reason={response.stop_reason if hasattr(response, 'stop_reason') else 'n/a'}"
+                    )
+                text = response.content[0].text
+                if text is None:
+                    raise _LLMContentNone(
+                        f"stop_reason={getattr(response, 'stop_reason', None)}"
+                    )
+                return text
             except Exception as exc:
                 last_err = exc
                 _log.warning("Anthropic attempt %d failed: %s: %s",

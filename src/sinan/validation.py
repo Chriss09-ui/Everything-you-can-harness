@@ -15,7 +15,7 @@ import re
 
 
 _FENCE_RE = re.compile(
-    r"^\s*```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*)```\s*$",
+    r"```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*)```",
     re.DOTALL,
 )
 
@@ -89,7 +89,11 @@ _REQUIRED_FIELDS = {
     "arch_revision_brief": {
         # arch_revise compiles user feedback + reviewer findings into
         # actionable changes for the next framework_design round.
+        # revision_round is the round *this brief is asking Zonggong to apply*
+        # — equals arch_reject_count at the time arch_revise runs. Required
+        # because zonggong_integrate uses it to label archive versions.
         "revision_summary", "specific_issues", "preserve_points",
+        "revision_round",
     },
     "harness_design_draft": {
         # cross-layer contract: architecture → coding. This is the most
@@ -122,7 +126,12 @@ _REQUIRED_FIELDS = {
         "status", "files",
     },
     "evaluator_grade": {
-        "overall_pass", "summary",
+        # ``bugs`` is required even though it may be an empty list: the
+        # downstream evaluator_bugs reads ``grade.get("bugs", [])`` and
+        # an absent key would silently produce ``total_bugs=0`` → fix loop
+        # skipped → real regressions dropped on the floor. An empty list is
+        # a legitimate grade ("QA passed, no bugs"); an absent key is not.
+        "overall_pass", "summary", "bugs",
     },
     "fix_result": {
         # NOTE: ``verified`` is intentionally NOT in the schema. generator_fix
@@ -144,9 +153,15 @@ _REQUIRED_FIELDS = {
 
 
 def parse_llm_json(raw: str, artifact_name: str) -> dict:
-    """Strip markdown fences and parse a JSON-only LLM response."""
+    """Strip markdown fences and parse a JSON-only LLM response.
+
+    Tolerates leading/trailing prose ("Here is the JSON:\n```json\n...\n```\n
+    Let me know…") — extract the first fenced block if present, otherwise
+    try the whole text. Refuses to silently return a half-parsed object by
+    raising ``ValueError`` on any failure.
+    """
     text = raw.strip()
-    m = _FENCE_RE.match(text)
+    m = _FENCE_RE.search(text)
     if m:
         text = m.group("body").strip()
     try:

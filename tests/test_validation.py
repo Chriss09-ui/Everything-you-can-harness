@@ -3,7 +3,7 @@ import json
 import pytest
 
 from sinan.validation import (
-    parse_and_validate_artifact, validate_artifact,
+    parse_and_validate_artifact, parse_llm_json, validate_artifact,
 )
 
 
@@ -99,13 +99,17 @@ def test_spec_requires_features():
 #   - Consumer code reads field A but schema enforces B → field silently absent
 
 def test_arch_revision_brief_accepts_real_prompt_output():
-    """Real-shape output from the arch_revise prompt must pass validation."""
+    """Real-shape output from the arch_revise prompt must pass validation
+    once the node-attached revision_round is present. The LLM doesn't know
+    the reject count, so arch_revise attaches it after parsing; we mirror
+    that assembly here."""
     data = {
         "revision_summary": "shrink over-engineering",
         "specific_issues": [
             {"issue": "x", "in_previous_design": "y", "fix_instruction": "z"}
         ],
         "preserve_points": ["artifact-based handoff"],
+        "revision_round": 1,
     }
     validate_artifact(data, "arch_revision_brief")
 
@@ -121,3 +125,31 @@ def test_arch_revision_brief_rejects_legacy_field_names():
     }
     with pytest.raises(ValueError, match="missing required fields"):
         validate_artifact(data, "arch_revision_brief")
+
+
+# ── LLM JSON parsing tolerance ──
+
+
+def test_parse_llm_json_strips_fenced_block_with_surrounding_prose():
+    """Real LLMs often wrap JSON in a fenced block with chatty prose before
+    and after. The previous ``^...$`` regex required the fences to span the
+    whole string, so a trailing "Let me know if…" line broke parsing. We now
+    locate the first `` ```...``` `` block anywhere in the text."""
+    raw = (
+        "Here is the requirement pack:\n"
+        "```json\n"
+        '{"primary_goal": "g", "use_case_summary": "u", "stakeholders": [], '
+        '"scope_inclusions": [], "scope_exclusions": [], "success_criteria": [], '
+        '"assumptions": [], "known_constraints": [], "persona_qualities": [], '
+        '"risk_tolerance": "medium"}\n'
+        "```\n"
+        "Let me know if you'd like any adjustments.\n"
+    )
+    data = parse_llm_json(raw, "requirement_pack")
+    assert data["primary_goal"] == "g"
+
+
+def test_parse_llm_json_plain_json_still_works():
+    """No fence — just JSON — should still parse (the common case)."""
+    data = parse_llm_json('{"primary_goal": "g"}', "framework_design")
+    assert data["primary_goal"] == "g"

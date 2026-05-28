@@ -90,7 +90,7 @@ def test_state_schema_fields():
         "architecture_pack", "architecture_review", "harness_design_draft",
         "gate_flags", "decision_log", "progress_log",
         "artifact_versions", "pending_interrupt",
-        "interrupted_by", "resume_payload", "arch_reject_count",
+        "resume_payload", "arch_reject_count",
         "risk_register", "messages",
     ]
     for field in required_fields:

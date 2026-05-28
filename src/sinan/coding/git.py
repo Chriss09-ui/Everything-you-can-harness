@@ -36,10 +36,24 @@ def git_init(run_id: str) -> str:
 
 
 def git_commit(run_id: str, message: str) -> str:
-    """Commit current changes with the given message."""
-    # Stage all files
+    """Commit current staged changes with the given message.
+
+    Raises ``RuntimeError`` on non-zero exit so callers can't silently
+    advance past a failed commit. ``last_good_commit`` is read from HEAD by
+    ``git_save_good_commit`` after this returns — if we returned success on a
+    failed commit, the next read would pin a stale or unrelated SHA and the
+    revert path would target the wrong ref.
+    """
     _run_git(run_id, "add", "-A")
     result = _run_git(run_id, "commit", "-m", message)
+    if result.returncode != 0:
+        # Empty-tree commit returns 0 with "nothing to commit" on stdout;
+        # non-zero here means a real failure (hook rejection, missing author,
+        # lockfile contention, detached HEAD, etc.). Don't paper over it.
+        raise RuntimeError(
+            f"git commit failed (rc={result.returncode}): "
+            f"{(result.stderr or result.stdout).strip()[:300]}"
+        )
     msg = result.stdout.strip() or result.stderr.strip()
     append_progress_log(run_id, "GIT", f"git commit: {message[:60]}")
     return msg

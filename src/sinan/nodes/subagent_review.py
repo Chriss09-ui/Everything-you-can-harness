@@ -30,7 +30,9 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from ..validation import parse_llm_json, parse_and_validate_artifact
+from ..validation import (
+    parse_llm_json, parse_and_validate_artifact, validate_artifact,
+)
 
 
 # Three independent sub-agents with no shared mutable state — natural
@@ -112,6 +114,14 @@ def subagent_review_node(state: HarnessBuilderState) -> dict:
     # 不同而产出 JSON diff 抖动。
     reviews = {name: results_by_name[name]["review"] for name, _, _ in _SUBAGENT_CALLS}
     subagent_outputs = {name: results_by_name[name]["design"] for name, _, _ in _SUBAGENT_CALLS}
+
+    # Wrapper-level schema check. individual designs are intentionally free-form
+    # (each sub-agent's output shape varies), but the wrapper MUST contain all
+    # three keys — otherwise zonggong_integrate / final_spec silently receive
+    # a half-formed payload downstream. Each design is checked against the
+    # relevant sub-schemas to catch drift early.
+    validate_artifact(reviews, "subagent_reviews")
+    validate_artifact(subagent_outputs, "subagent_outputs")
 
     write_json(state["run_id"], "subagent_reviews.json", reviews, versioned=True)
     write_json(state["run_id"], "subagent_outputs.json", subagent_outputs, versioned=True)

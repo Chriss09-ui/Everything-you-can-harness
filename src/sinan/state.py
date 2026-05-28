@@ -57,7 +57,6 @@ class HarnessBuilderState(TypedDict):
     pending_interrupt: Optional[
         Literal["user_brief", "user_approval"]
     ]
-    interrupted_by: Optional[str]
     resume_payload: Optional[dict]
     arch_reject_count: int
 
@@ -110,7 +109,6 @@ def make_initial_state(run_id: str) -> HarnessBuilderState:
         progress_log=[],
         artifact_versions={},
         pending_interrupt=None,
-        interrupted_by=None,
         resume_payload=None,
         arch_reject_count=0,
         risk_register=[],
