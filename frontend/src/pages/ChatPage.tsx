@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, ArrowUp, MessageSquare } from "lucide-react";
+import { ArrowUp, MessageSquare } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarvisAvatar } from "@/assets/MarvisAvatar";
 import { cn } from "@/lib/cn";
@@ -52,19 +52,12 @@ function HomeView() {
             placeholder="请输入任务，交给我来帮你完成"
             className="w-full resize-none border-none bg-transparent text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
           />
-          <div className="flex items-center mt-2">
-            <button
-              type="button"
-              className="flex items-center gap-1.5 border border-line-strong rounded-full py-2 px-4 text-sm font-medium hover:bg-surface-hover transition-colors"
-            >
-              <Plus size={16} />
-              选择文件
-            </button>
+          <div className="flex items-center justify-end mt-2">
             <button
               type="button"
               onClick={submit}
               className={cn(
-                "ml-auto w-[42px] h-[42px] rounded-full grid place-items-center text-white transition-[background,transform]",
+                "w-[42px] h-[42px] rounded-full grid place-items-center text-white transition-[background,transform]",
                 ready
                   ? "bg-ink hover:scale-105"
                   : "bg-[#e7e5e0] cursor-not-allowed",
