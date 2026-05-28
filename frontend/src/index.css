@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes halo-blink {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.38; }
+}
+
+@keyframes halo-blink-fast {
+  0%, 100% { opacity: 0.18; }
+  50% { opacity: 0.5; }
+}
+
+.glow-halo {
+  box-shadow:
+    0 0 40px 12px rgba(59, 130, 246, 0.35),
+    0 0 80px 30px rgba(59, 130, 246, 0.18),
+    0 0 140px 60px rgba(59, 130, 246, 0.08);
+  animation: halo-blink 3s ease-in-out infinite;
+  transition: box-shadow 0.4s ease;
+}
+.glow-halo:focus-within {
+  box-shadow:
+    0 0 50px 16px rgba(59, 130, 246, 0.5),
+    0 0 100px 40px rgba(59, 130, 246, 0.28),
+    0 0 160px 70px rgba(59, 130, 246, 0.12);
+  animation: halo-blink-fast 2s ease-in-out infinite;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas text-ink font-body antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    @apply bg-accent-soft;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
