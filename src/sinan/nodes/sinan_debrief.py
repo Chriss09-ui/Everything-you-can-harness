@@ -27,6 +27,7 @@ from ..artifacts import (
     append_progress_log, append_decision_log, finalize_phase,
     load_state_or_file, update_run_state,
 )
+from ..validation import parse_and_validate_artifact
 
 
 def sinan_debrief_node(state: HarnessBuilderState) -> dict:
@@ -49,7 +50,7 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     user = json.dumps(prompt_data, ensure_ascii=False, indent=2)
 
     raw = client.generate(system, user)
-    response = _parse_response(raw)
+    response = parse_and_validate_artifact(raw, "sinan_debrief_display")
 
     display = response.get("display", {})
     questions = display.get("user_questions", [])
@@ -164,19 +165,3 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     )
     finalize_phase(state["run_id"])
     return state
-
-
-def _parse_response(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        # Never silently short-circuit the user gate. Surface the failure so
-        # the caller (and the run's decision log) can see what happened.
-        raise ValueError(f"Failed to parse sinan_debrief LLM response: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError("sinan_debrief LLM response is not a JSON object")
-    return data

@@ -13,6 +13,37 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 RUNS_DIR = PROJECT_ROOT / "runs"
 _VERSION_REGISTRY = "version_registry.json"
 
+# Basenames that LLM-driven writes (implement_feature, generator_fix) must
+# NEVER overwrite. ``init.sh`` is the acute risk: it is written by init_script
+# from a hardcoded template and later executed via ``bash init.sh`` in
+# session_setup. If an LLM could route ``{"path": "init.sh", "content": ...}``
+# through implement_feature's path-traversal guard, the next sprint's session
+# init would run attacker-controlled bash. Blocking the overwrite at the
+# write-target layer (rather than the LLM input layer) is deterministic.
+_CRITICAL_HARNESS_FILES = frozenset({
+    "init.sh",
+})
+
+
+def assert_safe_llm_write_target(harness_dir: Path, rel_path: str) -> Path:
+    """Resolve and guard an LLM-supplied write path inside a run's harness dir.
+
+    Raises ``RuntimeError`` when:
+      - the resolved path escapes ``harness_dir`` (path traversal)
+      - the basename is in ``_CRITICAL_HARNESS_FILES`` (init.sh etc.)
+
+    Returns the resolved ``Path`` on success. Callers should ``mkdir -p`` the
+    parent before writing.
+    """
+    resolved = (harness_dir / rel_path).resolve()
+    if not resolved.is_relative_to(harness_dir.resolve()):
+        raise RuntimeError(f"Blocked path traversal: {rel_path!r}")
+    if resolved.name in _CRITICAL_HARNESS_FILES:
+        raise RuntimeError(
+            f"Blocked write to critical harness file: {rel_path!r}"
+        )
+    return resolved
+
 
 # ── Version Registry helpers ────────────────────────────────────────────────
 

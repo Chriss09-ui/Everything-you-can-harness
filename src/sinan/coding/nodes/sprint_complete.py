@@ -11,6 +11,13 @@ Reads:
 Writes:
     state["sprint_result"] — {completion_pct, spec_complete, qa_grades, ...}
     state["current_phase"] — "SPRINT_COMPLETE"
+    (also resets: sprint_number++, session_number=1, negotiate_round=1,
+     fix_loop_count=0, feature_retry_count=0, sanity_retry_count=0,
+     sprint_contract=None, evaluator_grade=None, fix_result=None,
+     current_feature_id=None, current_feature_status=None, test_result=None,
+     implement_result=None, triage_result=None, _is_first_init=False.
+     bug_report is intentionally NOT reset — sprint_plan consumes it as
+     "previous sprint bugs" context to prioritize the next sprint.)
 
 Artifacts:
     sprint_result.json  — versioned sprint summary
@@ -69,6 +76,9 @@ def sprint_complete_node(state: CodingState) -> dict:
     # propagates values a node RETURNS, so router-side mutations are dropped.
     # sprint_contract MUST also be cleared so sprint_plan re-plans the next
     # sprint instead of reusing sprint 1's agreed contract.
+    # bug_report is intentionally NOT cleared: sprint_plan needs the previous
+    # sprint's bug context to inform the next sprint's priorities. evaluator_bugs
+    # will overwrite it once the new sprint produces its own bugs.
     # _is_first_init MUST be flipped to False so sprint 2's session_init
     # skips the 5 init branches (otherwise they re-write feature_list.json,
     # claude-progress.txt, and re-run git init, nuking sprint 1's work).
@@ -84,7 +94,6 @@ def sprint_complete_node(state: CodingState) -> dict:
         "sanity_retry_count": 0,
         "sprint_contract": None,
         "evaluator_grade": None,
-        "bug_report": None,
         "fix_result": None,
         "current_feature_id": None,
         "current_feature_status": None,

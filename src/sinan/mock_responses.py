@@ -374,3 +374,24 @@ def register_mock_responses() -> None:
             "你对 V1 的交付周期有明确的时间要求吗？"
         ]
     }, ensure_ascii=False))
+
+    # 司南 (交互) — sinan_debrief_node 用，按 sinan_interact prompt 输出 display 包装。
+    # 保持 4 个 user_questions + 0 个 remaining_disagreements：这样 unresolved_risks=False，
+    # 走 "全部回答、直接进 brief_compile" 的 happy path，避免触发 proceed/abort 二次确认。
+    MockLLMClient.register("你是司南（Sinan），司南系统的首席交互官", json.dumps({
+        "display": {
+            "header": "辩论已完成，请您填写以下信息",
+            "question_instruction": "请逐条回答（输入 'skip' 跳过，'done' 结束）：",
+            "aligned_points": [
+                "系统采用多阶段协作工作流",
+                "所有 artifact 写入磁盘作为交接契约",
+            ],
+            "remaining_disagreements": [],
+            "user_questions": [
+                "你的系统每日预期处理多少任务？",
+                "用户审批时希望看到多详细的架构描述？",
+                "系统失败时希望收到什么告警通知？",
+                "对 V1 的交付周期有明确的时间要求吗？",
+            ],
+        }
+    }, ensure_ascii=False))

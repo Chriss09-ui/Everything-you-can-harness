@@ -3,14 +3,16 @@
 Agent: 总工 (Zonggong)
 Layer: 架构层
 
-Reads:
+Reads (全部经 ``load_state_or_file``，state 优先 + 磁盘 fallback):
     state["framework_design"]       — adjusted framework
-    state["subagent_reviews"]       — sub-agent review reports
-    state["framework_adjustments"] — adjustment records
-    state["arch_revision_brief"]   — revision context (if revision loop)
+    state["subagent_outputs"]       — memory/handoff/eval 详细设计
+    state["subagent_reviews"]       — 子 agent 评审 (嵌入追溯)
+    state["framework_adjustments"]  — 调整记录 (嵌入追溯)
+    state["arch_revision_brief"]    — 修订上下文 (revision loop 时)
+    state["user_brief_form"] / state["requirement_pack"]  — 需求契约
 
 Writes:
-    state["architecture_pack"]   — complete architecture package
+    state["architecture_pack"]   — 完整架构包
     state["current_phase"]        — "ZONGGONG_INTEGRATE"
     state["artifact_versions"]    — records architecture_pack version
 
@@ -27,7 +29,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, load_state_or_file,
 )
 from ..validation import parse_and_validate_artifact
 
@@ -37,14 +39,21 @@ def zonggong_integrate_node(state: HarnessBuilderState) -> dict:
     append_progress_log(state["run_id"], "ZONGGONG_INTEGRATE", "Zonggong integrating all sub-agent outputs")
 
     client = get_llm_client()
-    brief = state.get("user_brief_form") or state.get("requirement_pack") or {}
+    # load_state_or_file makes this node re-runnable via --from-brief /
+    # --from-design: even if state is empty, we still pick up the disk
+    # artifacts from prior nodes.
+    brief = (
+        load_state_or_file(state, "user_brief_form")
+        or load_state_or_file(state, "requirement_pack")
+        or {}
+    )
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
 
-    framework = state.get("framework_design") or {}
+    framework = load_state_or_file(state, "framework_design") or {}
     subagent_outputs = _load_subagent_outputs(state)
 
     revision_context = ""
-    revision_brief = state.get("arch_revision_brief")
+    revision_brief = load_state_or_file(state, "arch_revision_brief", default=None)
     if revision_brief:
         revision_context = (
             f"\n\n【本轮修复重点】\n"

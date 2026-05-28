@@ -7,13 +7,17 @@ Reads:
     state["run_id"]
 
 Writes:
-    state["current_phase"]  — "INIT_LOOP_ENTRY"
+    (none — see Artifacts)
 
 Artifacts:
     decision log entry (no file)
 
 Routes:
     → session_setup  (linear, fan-in to coordinator)
+
+Note: deliberately does NOT write state["current_phase"]. This node runs inside
+a Send() fan-out alongside 4 siblings; the phase is set by session_setup_entry
+after the fan-in completes, and last-writer-wins auf phase would race.
 """
 from __future__ import annotations
 from ..state import CodingState

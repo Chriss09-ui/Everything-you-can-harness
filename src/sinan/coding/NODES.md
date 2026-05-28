@@ -302,8 +302,8 @@ Routes:
 |------|------|
 | Agent | — (orchestrator, 无 LLM) |
 | Loop | Sprint (出口) |
-| Reads | `feature_list`, `evaluator_grade` |
-| Writes | `sprint_result` |
+| Reads | `feature_list`, `evaluator_grade`, `sprint_number` |
+| Writes | `sprint_result`，并重置所有 per-sprint 计数 (sprint_number++, session_number=1, negotiate_round=1, fix_loop_count=0, feature_retry_count=0, sanity_retry_count=0, sprint_contract=None, evaluator_grade=None, fix_result=None, current_feature_*=None, test_result=None, implement_result=None, triage_result=None, _is_first_init=False)。**`bug_report` 不重置** — sprint_plan 把它当作"上一轮 bug 上下文"消费 |
 | Artifacts | `sprint_result.json` (versioned) |
 | Routes | → END (spec_complete) / → `sprint_plan` (继续下一轮) |
 

@@ -37,6 +37,15 @@ _REQUIRED_FIELDS = {
         "tuopu_position", "jiewen_challenges", "tuopu_responses",
         "aligned_points", "remaining_disagreements", "user_questions",
     },
+    "sinan_debrief_display": {
+        # LLM-controlled UI payload consumed by sinan_debrief_node before
+        # prompting the user. Without ``display`` the node silently shows
+        # nothing and proceeds; without ``user_questions`` / ``aligned_points``
+        # / ``remaining_disagreements`` the user gets no context for the
+        # inputs they're being asked for. Validate the wrapper so a
+        # malformed LLM response fails fast instead of producing a blank UI.
+        "display",
+    },
     "user_brief_form": {
         "confirmed_requirements", "rejected_suggestions",
         "supplementary_notes", "priority_order", "constraints_final",

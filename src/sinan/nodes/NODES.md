@@ -165,10 +165,13 @@ Routes:
 |------|------|
 | Agent | 总工 (Zonggong) |
 | Layer | 架构层 (四步辩论 Step 4) |
-| Reads | `framework_design`, `subagent_reviews`, `framework_adjustments` |
+| Reads | `framework_design`, `subagent_outputs`, `subagent_reviews`, `framework_adjustments`, `arch_revision_brief`, `user_brief_form` (or `requirement_pack` fallback) |
 | Writes | `architecture_pack`, `current_phase`, `artifact_versions` |
 | Artifacts | `architecture_pack.json` |
 | Routes | → `architecture_challenge` (linear) |
+
+> Reads 全部经 `load_state_or_file`（state 优先 + 磁盘 fallback），让 `--from-brief` /
+> `--from-design` 重入路径不依赖 state 仍能正常工作。
 
 ### 10. architecture_challenge
 

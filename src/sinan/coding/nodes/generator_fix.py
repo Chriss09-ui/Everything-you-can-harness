@@ -30,6 +30,7 @@ from sinan.validation import parse_and_validate_artifact
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, get_run_dir,
+    assert_safe_llm_write_target,
 )
 
 
@@ -59,10 +60,10 @@ def generator_fix_node(state: CodingState) -> dict:
     result = parse_and_validate_artifact(raw, "fix_result")
 
     for f in result.get("files", []):
-        target = (harness_dir / f["path"]).resolve()
-        if not target.is_relative_to(harness_dir.resolve()):
-            append_progress_log(state["run_id"], "GENERATOR_FIX",
-                f"Blocked path traversal: {f['path']}")
+        try:
+            target = assert_safe_llm_write_target(harness_dir, f["path"])
+        except RuntimeError as e:
+            append_progress_log(state["run_id"], "GENERATOR_FIX", str(e))
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f["content"])

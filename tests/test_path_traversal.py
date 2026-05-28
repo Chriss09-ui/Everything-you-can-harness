@@ -118,3 +118,61 @@ def test_generator_fix_blocks_path_traversal(tmp_path, monkeypatch):
     escape_candidates = list(tmp_path.rglob("escape.txt"))
     assert escape_candidates == [], f"path traversal escaped: {escape_candidates}"
     assert (harness / "src" / "patched.py").read_text() == "fixed = True\n"
+
+
+def test_implement_feature_blocks_init_sh_overwrite(tmp_path, monkeypatch):
+    """init.sh is the acute risk: session_setup runs it via ``bash init.sh``.
+
+    If an LLM could route ``{"path": "init.sh", ...}`` through implement_feature,
+    the next sprint's session init would execute attacker-controlled bash. We
+    must block this overwrite even though the path trivially resolves inside
+    the harness dir.
+    """
+    run_id, state = _setup(tmp_path, monkeypatch, {
+        "status": "implemented",
+        "files": [
+            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n", "action": "modify"},
+            {"path": "src/legit.py", "content": "ok = 1\n", "action": "create"},
+        ],
+        "summary": "init.sh hijack attempt",
+    }, "请实现以下功能")
+
+    init_sh = get_run_dir(run_id) / "harness" / "init.sh"
+    init_sh.write_text("echo original\n")
+    init_sh.chmod(0o755)
+
+    implement_feature_node(state)
+
+    assert init_sh.read_text() == "echo original\n", (
+        "init.sh was overwritten by LLM — next session_setup would run "
+        "attacker-controlled bash"
+    )
+    assert (get_run_dir(run_id) / "harness" / "src" / "legit.py").exists()
+
+
+def test_generator_fix_blocks_init_sh_overwrite(tmp_path, monkeypatch):
+    """Mirror of the implement_feature test, on the bug-fix path."""
+    run_id, state = _setup(tmp_path, monkeypatch, {
+        "status": "fixed",
+        "files": [
+            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n", "action": "modify"},
+            {"path": "src/patched.py", "content": "fixed = True\n", "action": "modify"},
+        ],
+        "verified": True,
+        "self_test_passed": True,
+        "summary": "init.sh hijack via fix",
+    }, "Bug 修复")
+
+    state["bug_report"] = {"bugs": [{"description": "b1", "severity": "major"}]}
+    state["fix_loop_count"] = 0
+
+    init_sh = get_run_dir(run_id) / "harness" / "init.sh"
+    init_sh.write_text("echo original\n")
+    init_sh.chmod(0o755)
+
+    generator_fix_node(state)
+
+    assert init_sh.read_text() == "echo original\n", (
+        "init.sh was overwritten by generator_fix"
+    )
+    assert (get_run_dir(run_id) / "harness" / "src" / "patched.py").read_text() == "fixed = True\n"
