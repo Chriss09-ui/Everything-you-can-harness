@@ -11,11 +11,11 @@
   box-shadow:
     0 0 40px 14px rgba(59, 130, 246, 0.35),
     0 0 80px 30px rgba(59, 130, 246, 0.18),
-    0 0 140px 60px rgba(59, 130, 246, 0.08) !important;
+    0 0 140px 60px rgba(59, 130, 246, 0.08);
   animation: halo-blink 3s ease-in-out infinite;
   transition: filter 0.4s ease;
 }
-.glow-halo:focus-within {
+.glow-wrap:focus-within .glow-halo {
   filter: brightness(1.5);
 }
 

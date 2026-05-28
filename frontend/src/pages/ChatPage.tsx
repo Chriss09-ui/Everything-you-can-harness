@@ -39,33 +39,33 @@ function HomeView() {
           </div>
         </div>
 
-        <div
-          className="glow-halo bg-surface rounded-xl pt-5 px-6 pb-4 animate-fade-up"
-          style={{ animationDelay: "0.06s" }}
-        >
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
-            }}
-            placeholder="请输入任务，交给我来帮你完成"
-            className="w-full resize-none border-none bg-transparent text-ink text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
-          />
-          <div className="flex items-center justify-end mt-2">
-            <button
-              type="button"
-              onClick={submit}
-              className={cn(
-                "w-[42px] h-[42px] rounded-full grid place-items-center text-white transition-[background,transform]",
-                ready
-                  ? "bg-ink hover:scale-105"
-                  : "bg-[#e7e5e0] cursor-not-allowed",
-                "active:scale-95",
-              )}
-            >
-              <ArrowUp size={18} strokeWidth={2.2} />
-            </button>
+        <div className="glow-wrap relative animate-fade-up" style={{ animationDelay: "0.06s" }}>
+          <div className="glow-halo absolute inset-0 rounded-xl" aria-hidden />
+          <div className="relative bg-surface rounded-xl pt-5 px-6 pb-4">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
+              }}
+              placeholder="请输入任务，交给我来帮你完成"
+              className="w-full resize-none border-none bg-transparent text-ink text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
+            />
+            <div className="flex items-center justify-end mt-2">
+              <button
+                type="button"
+                onClick={submit}
+                className={cn(
+                  "w-[42px] h-[42px] rounded-full grid place-items-center text-white transition-[background,transform]",
+                  ready
+                    ? "bg-ink hover:scale-105"
+                    : "bg-[#e7e5e0] cursor-not-allowed",
+                  "active:scale-95",
+                )}
+              >
+                <ArrowUp size={18} strokeWidth={2.2} />
+              </button>
+            </div>
           </div>
         </div>
 
