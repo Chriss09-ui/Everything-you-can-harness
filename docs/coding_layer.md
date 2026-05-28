@@ -92,7 +92,7 @@
                   (剩余)  ↓               ↓ (sprint 完成)        ┌────────┴────────┐    ▼
                    pick_feature      evaluator_qa         (END)              ↑  generator_fix
                                                               (spec_complete)    │     │
-                                                                          (sprint<10) │  ┌────┴────┐
+                                                                          (sprint≤10) │  ┌────┴────┐
                                                                        sprint_plan ←──┘  ↓         ↓
                                                                                   (verified) (fail, retry<2)
                                                                                   evaluator_qa  generator_fix
@@ -191,7 +191,7 @@
 | `_evaluator_qa_router` | `evaluator_qa` | `evaluator_grade.overall_pass` | `sprint_complete` / `evaluator_bugs` |
 | `_evaluator_bugs_router` | `evaluator_bugs` | 总是 | `generator_fix` |
 | `_generator_fix_router` | `generator_fix` | `fix_result.verified` / `fix_loop_count ≥ 2` | `evaluator_qa` / `generator_fix` |
-| `_sprint_complete_router` | `sprint_complete` | `spec_complete` / `sprint_number ≥ 10` | `END` / `sprint_plan` / `RuntimeError` |
+| `_sprint_complete_router` | `sprint_complete` | `spec_complete` / `sprint_number > 10` | `END` / `sprint_plan` / `RuntimeError` |
 
 ### 上限值（动这些会改变循环语义，谨慎）
 

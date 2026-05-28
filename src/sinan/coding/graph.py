@@ -333,7 +333,7 @@ def _sprint_complete_router(state: CodingState) -> str:
     if sprint_result.get("spec_complete"):
         return "END"
 
-    if sprint_num >= 10:
+    if sprint_num > 10:
         raise RuntimeError(
             f"Maximum sprint limit (10) reached. "
             f"Please review the generated code manually."

@@ -384,7 +384,7 @@ JSON 解析容错（parse_and_validate_artifact，全流程共用）：
 
 ★ 死循环保险丝：
   arch_reject_count ≥ 3 → 强制抛错停止，避免用户和 LLM 互相拉锯停不下来
-  sprint_number ≥ 10 → 强制抛错停止
+  sprint_number > 10（即第 10 个 sprint 完成后）→ 强制抛错停止
 
 ★ 设计层 Agent 角色一览：
   ┌─────────────┬──────────────────┬──────────────────────────────────┐
