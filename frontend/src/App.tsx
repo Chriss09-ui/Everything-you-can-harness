@@ -4,6 +4,7 @@ import { ChatPage } from "@/pages/ChatPage";
 import { HistoryPage } from "@/pages/HistoryPage";
 import { ApiConfigPage } from "@/pages/ApiConfigPage";
 import { AccountPage } from "@/pages/AccountPage";
+import { OfficePage } from "@/pages/OfficePage";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
         <Route path="/" element={<ChatPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/api-config" element={<ApiConfigPage />} />
+        <Route path="/office" element={<OfficePage />} />
         <Route path="/account" element={<AccountPage />} />
       </Route>
     </Routes>

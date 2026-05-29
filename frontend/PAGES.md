@@ -9,6 +9,7 @@
 | `/` | `ChatPage` | 首页态 ↔ 进行中态（根据 chatStore 判断） |
 | `/history` | `HistoryPage` | 历史会话列表 |
 | `/api-config` | `ApiConfigPage` | API 配置（模型服务 + 参数） |
+| `/office` | `OfficePage` | 3D 办公室（占位页，Phase 3 实现） |
 | `/account` | `AccountPage` | 账号与设置（个人信息：头像/昵称/邮箱/简介 + 偏好：语言切换） |
 
 ## 页面数据契约

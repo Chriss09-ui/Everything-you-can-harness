@@ -1,10 +1,10 @@
 /** Sidebar — 左侧导航。
  *
- * Phase 1 主导航：新建对话 / 历史对话 / API 配置；底部：账号与设置。
+ * Phase 1 主导航：新建对话 / 历史对话 / API 配置 / 办公室；底部：账号与设置。
  * 改导航必须同步 frontend/PAGES.md。
  */
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { Plus, History, SlidersHorizontal, User } from "lucide-react";
+import { Plus, History, SlidersHorizontal, Building2, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useChatStore } from "@/stores/chatStore";
 import { useProfileStore } from "@/stores/profileStore";
@@ -65,6 +65,16 @@ export function Sidebar() {
         >
           <SlidersHorizontal size={19} className="shrink-0 text-ink" />
           {t("nav.apiConfig")}
+        </NavLink>
+
+        <NavLink
+          to="/office"
+          className={({ isActive }) =>
+            cn(navItemBase, isActive && navItemActive)
+          }
+        >
+          <Building2 size={19} className="shrink-0 text-ink" />
+          {t("nav.office")}
         </NavLink>
       </nav>
 

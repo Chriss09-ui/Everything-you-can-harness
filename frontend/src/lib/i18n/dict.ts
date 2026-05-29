@@ -77,6 +77,10 @@ const zh = {
   "api.maxTokens": "最大输出 Tokens",
   "api.saveConfig": "保存配置",
   "api.saved": "配置已保存",
+  // OfficePage
+  "nav.office": "办公室",
+  "office.subtitle": "你的 3D 虚拟办公空间（即将上线）",
+  "office.placeholder": "3D 办公室正在建设中，敬请期待",
 } as const;
 
 type Key = keyof typeof zh;
@@ -148,6 +152,9 @@ const en: Record<Key, string> = {
   "api.maxTokens": "Max output tokens",
   "api.saveConfig": "Save config",
   "api.saved": "Config saved",
+  "nav.office": "Office",
+  "office.subtitle": "Your 3D virtual workspace (coming soon)",
+  "office.placeholder": "3D office is under construction, stay tuned",
 };
 
 export const dict: Record<Lang, Record<Key, string>> = {
