@@ -8,7 +8,8 @@
 |---|---|---|
 | `/` | `ChatPage` | 首页态 ↔ 进行中态（根据 chatStore 判断） |
 | `/history` | `HistoryPage` | 历史会话列表 |
-| `/settings` | `SettingsPage` | API 配置 |
+| `/api-config` | `ApiConfigPage` | API 配置（模型服务 + 参数） |
+| `/account` | `AccountPage` | 账号与设置（个人信息 + 偏好） |
 
 ## 页面数据契约
 
@@ -51,7 +52,7 @@
 
 ---
 
-### SettingsPage (`/settings`)
+### ApiConfigPage (`/api-config`)
 
 **Reads:**
 - `configStore.config` — API 配置对象
@@ -63,6 +64,21 @@
 
 **Persists:**
 - 配置写入 localStorage（`marvis.config.v1`），API key 写入 `marvis.apiKey.v1`
+
+---
+
+### AccountPage (`/account`)
+
+**Reads:**
+- `profileStore.profile` — 用户个人信息对象
+
+**Writes:**
+- `profileStore.update(partial)` — 更新个人信息
+- `profileStore.save()` — 保存到 localStorage
+- `profileStore.reset()` — 恢复默认
+
+**Persists:**
+- 个人信息写入 localStorage（`marvis.profile.v1`）
 
 ---
 

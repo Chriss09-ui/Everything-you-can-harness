@@ -1,10 +1,10 @@
 /** Sidebar — 左侧导航。
  *
- * Phase 1 只保留三项：新建对话 / 历史对话 / 账号与设置。
+ * Phase 1 主导航：新建对话 / 历史对话 / API 配置；底部：账号与设置。
  * 改导航必须同步 frontend/PAGES.md。
  */
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { Plus, History, User, Smartphone } from "lucide-react";
+import { Plus, History, SlidersHorizontal, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -51,13 +51,23 @@ export function Sidebar() {
           <History size={19} className="shrink-0 text-ink" />
           历史对话
         </NavLink>
+
+        <NavLink
+          to="/api-config"
+          className={({ isActive }) =>
+            cn(navItemBase, isActive && navItemActive)
+          }
+        >
+          <SlidersHorizontal size={19} className="shrink-0 text-ink" />
+          API 配置
+        </NavLink>
       </nav>
 
       <div className="flex-1" />
 
       <div className="border-t border-line pt-3.5 pb-4 px-1">
         <NavLink
-          to="/settings"
+          to="/account"
           className={({ isActive }) =>
             cn(
               "flex items-center gap-3 rounded-md py-2 px-2 transition-colors hover:bg-surface-hover",
@@ -69,7 +79,6 @@ export function Sidebar() {
             <User size={15} />
           </span>
           <span className="text-sm font-medium">账号与设置</span>
-          <Smartphone size={17} className="ml-auto text-ink-faint" />
         </NavLink>
       </div>
     </aside>

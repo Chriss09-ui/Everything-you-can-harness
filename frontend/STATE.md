@@ -8,6 +8,7 @@
 | Slice | 文件 | 持久化 | 用途 |
 |---|---|---|---|
 | `configStore` | `stores/configStore.ts` | ✅ localStorage | API 配置 |
+| `profileStore` | `stores/profileStore.ts` | ✅ localStorage | 用户个人信息 |
 | `sessionsStore` | `stores/sessionsStore.ts` | ✅ localStorage | 历史会话列表 |
 | `chatStore` | `stores/chatStore.ts` | ❌（内存） | 当前会话消息 + 流状态 |
 | `agentStore` | `stores/agentStore.ts` | ❌（Phase 3 占位） | 3D 办公室 agent 状态 |
@@ -53,6 +54,20 @@ interface Config {
 ```
 
 **持久化 key**：`marvis.config.v1`（不含 key），API key 单独存 `marvis.apiKey.v1`
+
+## profileStore
+
+```typescript
+interface Profile {
+  displayName: string;
+  email: string;
+  bio: string;
+  language: "zh-CN" | "en-US";
+  theme: "light" | "dark" | "system";
+}
+```
+
+**持久化 key**：`marvis.profile.v1`
 
 ## sessionsStore
 

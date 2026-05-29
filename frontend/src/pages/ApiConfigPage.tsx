@@ -22,7 +22,7 @@ const MODEL_OPTIONS = [
   { value: "deepseek-chat", label: "DeepSeek Chat" },
 ];
 
-export function SettingsPage() {
+export function ApiConfigPage() {
   const config = useConfigStore((s) => s.config);
   const apiKey = useConfigStore((s) => s.apiKey);
   const connState = useConfigStore((s) => s.connState);

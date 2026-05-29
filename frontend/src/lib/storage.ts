@@ -41,4 +41,5 @@ export const STORAGE_KEYS = {
   config: "config.v1",
   apiKey: "apiKey.v1",
   sessions: "sessions.v1",
+  profile: "profile.v1",
 } as const;
