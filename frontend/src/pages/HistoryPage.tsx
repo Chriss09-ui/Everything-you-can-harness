@@ -12,12 +12,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSessionsStore, groupByDay } from "@/stores/sessionsStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useProfileStore } from "@/stores/profileStore";
 import { cn } from "@/lib/cn";
 import { useState } from "react";
+import { useT } from "@/lib/i18n/useT";
+import type { Key } from "@/lib/i18n/dict";
 
 const SAMPLE_ICONS = ["📊", "🧾", "📄", "🖥️", "🍿", "📒", "💻", "🎬"];
 
+const GROUP_KEYS: Record<string, Key> = {
+  今天: "history.group.today",
+  昨天: "history.group.yesterday",
+  更早: "history.group.earlier",
+};
+
 export function HistoryPage() {
+  const t = useT();
+  const profile = useProfileStore((s) => s.profile);
   const sessions = useSessionsStore((s) => s.sessions);
   const rename = useSessionsStore((s) => s.rename);
   const remove = useSessionsStore((s) => s.remove);
@@ -54,10 +65,10 @@ export function HistoryPage() {
     <div className="max-w-[820px] mx-auto px-12 pt-[54px] pb-[60px]">
       <div className="mb-9 animate-fade-up">
         <h2 className="font-display text-[30px] font-extrabold tracking-[-0.02em]">
-          历史对话
+          {t("history.title")}
         </h2>
         <p className="text-ink-muted text-[15px] mt-2">
-          你和马维斯的所有协作记录都在这里
+          {t("history.subtitle")}
         </p>
       </div>
 
@@ -65,7 +76,7 @@ export function HistoryPage() {
         items.length === 0 ? null : (
           <div key={group}>
             <div className="text-[13px] font-semibold text-ink-faint px-1 mb-2.5">
-              {group}
+              {GROUP_KEYS[group] ? t(GROUP_KEYS[group]) : group}
             </div>
             {items.map((s, idx) => {
               const icon = SAMPLE_ICONS[idx % SAMPLE_ICONS.length] ?? "💬";
@@ -87,16 +98,16 @@ export function HistoryPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-[15.5px] font-semibold mb-0.5 truncate">{s.title}</div>
                     <div className="text-[13.5px] text-ink-muted truncate">
-                      {s.messages[s.messages.length - 1]?.content.slice(0, 80) ?? "新对话"}
+                      {s.messages[s.messages.length - 1]?.content.slice(0, 80) ?? t("history.newChat")}
                     </div>
                   </div>
                   <div className="text-[13px] text-ink-faint shrink-0 group-hover:hidden">
-                    {formatTime(s.updatedAt)}
+                    {formatTime(s.updatedAt, profile.language)}
                   </div>
                   <div className="hidden group-hover:flex gap-1 shrink-0">
                     <button
                       type="button"
-                      title="重命名"
+                      title={t("history.rename")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setRenameTarget({ id: s.id, title: s.title });
@@ -108,7 +119,7 @@ export function HistoryPage() {
                     </button>
                     <button
                       type="button"
-                      title="删除"
+                      title={t("history.delete")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteTarget(s.id);
@@ -128,7 +139,7 @@ export function HistoryPage() {
       {sessions.length === 0 && (
         <div className="text-center text-ink-muted py-20 animate-fade-up">
           <div className="text-4xl mb-4">📭</div>
-          <p className="text-[15px]">还没有对话记录，开始你的第一次对话吧</p>
+          <p className="text-[15px]">{t("history.empty")}</p>
         </div>
       )}
 
@@ -136,8 +147,8 @@ export function HistoryPage() {
       <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名对话</DialogTitle>
-            <DialogDescription>修改后的名称将自动保存</DialogDescription>
+            <DialogTitle>{t("history.renameTitle")}</DialogTitle>
+            <DialogDescription>{t("history.renameDesc")}</DialogDescription>
           </DialogHeader>
           <input
             autoFocus
@@ -148,10 +159,10 @@ export function HistoryPage() {
           />
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">取消</Button>
+              <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogClose>
             <Button variant="primary" onClick={handleRename}>
-              保存
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -161,15 +172,15 @@ export function HistoryPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除对话</DialogTitle>
-            <DialogDescription>此操作不可恢复，确定要删除吗？</DialogDescription>
+            <DialogTitle>{t("history.deleteTitle")}</DialogTitle>
+            <DialogDescription>{t("history.deleteDesc")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">取消</Button>
+              <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogClose>
             <Button variant="danger" onClick={handleDelete}>
-              删除
+              {t("history.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -178,7 +189,7 @@ export function HistoryPage() {
   );
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso: string, lang: "zh-CN" | "en-US"): string {
   const d = new Date(iso);
   const now = new Date();
   const today = new Date(now);
@@ -187,10 +198,10 @@ function formatTime(iso: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
 
   if (d >= today) {
-    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
   }
   if (d >= yesterday) {
-    return "昨天";
+    return lang === "zh-CN" ? "昨天" : "Yesterday";
   }
-  return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  return d.toLocaleDateString(lang, { month: "numeric", day: "numeric" });
 }

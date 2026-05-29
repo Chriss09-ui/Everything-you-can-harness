@@ -9,7 +9,7 @@
 | `/` | `ChatPage` | 首页态 ↔ 进行中态（根据 chatStore 判断） |
 | `/history` | `HistoryPage` | 历史会话列表 |
 | `/api-config` | `ApiConfigPage` | API 配置（模型服务 + 参数） |
-| `/account` | `AccountPage` | 账号与设置（个人信息 + 偏好） |
+| `/account` | `AccountPage` | 账号与设置（个人信息：头像/昵称/邮箱/简介 + 偏好：语言切换） |
 
 ## 页面数据契约
 
@@ -29,7 +29,7 @@
 - 当前会话的 `messages[]` 在 sessionsStore 中持久化
 
 **Routes:**
-- `chatStore.messages.length === 0` → 首页态（hero + composer + 推荐卡片）
+- `chatStore.messages.length === 0` → 首页态（hero + 光晕 composer）
 - `chatStore.messages.length > 0` → 进行中态（消息列表 + 底部 composer）
 
 ---
@@ -70,15 +70,19 @@
 ### AccountPage (`/account`)
 
 **Reads:**
-- `profileStore.profile` — 用户个人信息对象
+- `profileStore.profile` — 用户个人信息对象（含 `avatar` base64、`language`）
 
 **Writes:**
-- `profileStore.update(partial)` — 更新个人信息
+- `profileStore.update(partial)` — 更新个人信息（头像、昵称、邮箱、简介、语言）
 - `profileStore.save()` — 保存到 localStorage
 - `profileStore.reset()` — 恢复默认
 
 **Persists:**
 - 个人信息写入 localStorage（`marvis.profile.v1`）
+
+**说明：**
+- 头像：file input → canvas 缩放裁剪 256×256 → JPEG base64，存进 `profile.avatar`
+- 语言切换即时生效（`update({language}) + save()`），全站经 `useT()` 重渲染
 
 ---
 

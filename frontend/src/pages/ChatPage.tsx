@@ -3,6 +3,7 @@ import { ArrowUp, MessageSquare } from "lucide-react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarvisAvatar } from "@/assets/MarvisAvatar";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/i18n/useT";
 
 export function ChatPage() {
   const messages = useChatStore((s) => s.messages);
@@ -11,6 +12,7 @@ export function ChatPage() {
 }
 
 function HomeView() {
+  const t = useT();
   const [input, setInput] = useState("");
   const startNewSession = useChatStore((s) => s.startNewSession);
   const ready = input.trim().length > 0;
@@ -34,7 +36,7 @@ function HomeView() {
             </h1>
             <div className="flex items-center gap-2 mt-3 text-[17px] text-ink-muted font-medium">
               <MessageSquare size={20} />
-              马维斯 为你24小时随时在线
+              {t("chat.tagline")}
             </div>
           </div>
         </div>
@@ -48,7 +50,7 @@ function HomeView() {
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
               }}
-              placeholder="请输入任务，交给我来帮你完成"
+              placeholder={t("chat.placeholder")}
               className="w-full resize-none border-none bg-transparent text-ink text-[18px] leading-[1.5] min-h-[88px] max-h-[220px] focus:outline-none placeholder:text-ink-faint"
             />
             <div className="flex items-center justify-end mt-2">
@@ -73,9 +75,9 @@ function HomeView() {
           className="mt-3 text-center text-[12px] text-ink-faint animate-fade-up"
           style={{ animationDelay: "0.12s" }}
         >
-          按 <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-surface border border-line text-[11px] font-mono">⌘</kbd>
+          {t("chat.sendHint1")} <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-surface border border-line text-[11px] font-mono">⌘</kbd>
           <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-surface border border-line text-[11px] font-mono">Enter</kbd>
-          发送
+          {t("chat.sendHint2")}
         </div>
       </div>
     </div>
@@ -83,6 +85,7 @@ function HomeView() {
 }
 
 function ConversationView() {
+  const t = useT();
   const messages = useChatStore((s) => s.messages);
   const streamingState = useChatStore((s) => s.streamingState);
   const sendMessage = useChatStore((s) => s.sendMessage);
@@ -137,7 +140,7 @@ function ConversationView() {
               }
             }}
             rows={1}
-            placeholder="继续输入..."
+            placeholder={t("chat.continuePlaceholder")}
             className="flex-1 resize-none border-none bg-transparent text-[16px] leading-[1.5] max-h-[120px] min-h-[24px] focus:outline-none placeholder:text-ink-faint"
           />
           <button

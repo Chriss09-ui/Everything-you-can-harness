@@ -1,23 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useProfileStore } from "@/stores/profileStore";
 import { toast } from "@/components/ui/toast";
+import { useT } from "@/lib/i18n/useT";
 
 const LANGUAGE_OPTIONS = [
   { value: "zh-CN", label: "简体中文" },
   { value: "en-US", label: "English" },
 ];
 
-const THEME_OPTIONS = [
-  { value: "system", label: "跟随系统" },
-  { value: "light", label: "浅色" },
-  { value: "dark", label: "深色" },
-];
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 export function AccountPage() {
+  const t = useT();
   const profile = useProfileStore((s) => s.profile);
   const update = useProfileStore((s) => s.update);
   const save = useProfileStore((s) => s.save);
@@ -25,6 +23,7 @@ export function AccountPage() {
 
   const [name, setName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(profile.displayName);
@@ -34,14 +33,28 @@ export function AccountPage() {
   const handleSave = () => {
     update({ displayName: name, bio });
     save();
-    toast("个人信息已保存");
+    toast(t("account.saved"));
   };
 
   const handleReset = () => {
     reset();
     setName("用户");
     setBio("");
-    toast("已恢复默认");
+    toast(t("account.resetDone"));
+  };
+
+  const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast(t("account.avatarTooLarge"));
+      return;
+    }
+    void resizeToDataUrl(file, 256).then((dataUrl) => {
+      update({ avatar: dataUrl });
+      save();
+    });
   };
 
   const initial = (name.trim()[0] ?? "U").toUpperCase();
@@ -50,11 +63,9 @@ export function AccountPage() {
     <div className="max-w-[720px] mx-auto px-12 pt-[54px] pb-[80px]">
       <div className="mb-9 animate-fade-up">
         <h2 className="font-display text-[30px] font-extrabold tracking-[-0.02em]">
-          账号与设置
+          {t("account.title")}
         </h2>
-        <p className="text-ink-muted text-[15px] mt-2">
-          管理你的个人信息与偏好
-        </p>
+        <p className="text-ink-muted text-[15px] mt-2">{t("account.subtitle")}</p>
       </div>
 
       {/* 个人资料 */}
@@ -62,42 +73,85 @@ export function AccountPage() {
         className="bg-surface border border-line rounded-lg p-7 mb-5 animate-fade-up"
         style={{ animationDelay: "0.06s" }}
       >
-        <h3 className="text-[17px] font-bold mb-1">个人资料</h3>
-        <p className="text-[13.5px] text-ink-muted mb-5">展示给你自己的身份信息</p>
+        <h3 className="text-[17px] font-bold mb-1">{t("account.profile")}</h3>
+        <p className="text-[13.5px] text-ink-muted mb-5">
+          {t("account.profileDesc")}
+        </p>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={handleAvatarPick}
+        />
 
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 rounded-full bg-ink text-white grid place-items-center text-[26px] font-display font-extrabold shrink-0">
-            {initial}
-          </div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="w-16 h-16 rounded-full overflow-hidden bg-ink text-white grid place-items-center text-[26px] font-display font-extrabold shrink-0 transition-transform hover:scale-105 active:scale-95"
+            title={t("account.uploadAvatar")}
+          >
+            {profile.avatar ? (
+              <img
+                src={profile.avatar}
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              initial
+            )}
+          </button>
           <div className="text-[13px] text-ink-muted">
-            头像由昵称首字母生成
-            <div className="text-ink-faint mt-0.5">Phase 2 支持自定义上传</div>
+            {t("account.avatarHint")}
+            <div className="flex gap-3 mt-2">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="text-ink font-medium hover:text-accent transition-colors"
+              >
+                {t("account.uploadAvatar")}
+              </button>
+              {profile.avatar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    update({ avatar: "" });
+                    save();
+                  }}
+                  className="text-ink-faint hover:text-accent transition-colors"
+                >
+                  {t("account.removeAvatar")}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <Field label="昵称">
+        <Field label={t("account.name")}>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="你的昵称"
+            placeholder={t("account.namePlaceholder")}
           />
         </Field>
 
-        <Field label="邮箱">
+        <Field label={t("account.email")}>
           <Input
             type="email"
             value={profile.email}
             onChange={(e) => update({ email: e.target.value })}
             placeholder="you@example.com"
           />
-          <Hint>仅本地保存，用于 Phase 2 账号同步</Hint>
+          <Hint>{t("account.emailHint")}</Hint>
         </Field>
 
-        <Field label="个人简介">
+        <Field label={t("account.bio")}>
           <Textarea
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            placeholder="一句话介绍自己"
+            placeholder={t("account.bioPlaceholder")}
             rows={3}
             className="bg-canvas border border-line-strong rounded-md px-3.5 py-2.5 text-[14.5px] transition-[background,border-color,box-shadow] duration-150 focus:bg-surface focus:border-ink-faint focus:shadow-[0_0_0_3px_rgba(0,0,0,0.03)]"
           />
@@ -109,24 +163,18 @@ export function AccountPage() {
         className="bg-surface border border-line rounded-lg p-7 animate-fade-up"
         style={{ animationDelay: "0.12s" }}
       >
-        <h3 className="text-[17px] font-bold mb-1">偏好</h3>
-        <p className="text-[13.5px] text-ink-muted mb-5">界面语言与主题</p>
+        <h3 className="text-[17px] font-bold mb-1">{t("account.prefs")}</h3>
+        <p className="text-[13.5px] text-ink-muted mb-5">{t("account.prefsDesc")}</p>
 
-        <Field label="语言">
+        <Field label={t("account.language")}>
           <Select
             value={profile.language}
-            onValueChange={(v) => update({ language: v as typeof profile.language })}
+            onValueChange={(v) => {
+              update({ language: v as typeof profile.language });
+              save();
+            }}
             options={LANGUAGE_OPTIONS}
           />
-        </Field>
-
-        <Field label="主题">
-          <Select
-            value={profile.theme}
-            onValueChange={(v) => update({ theme: v as typeof profile.theme })}
-            options={THEME_OPTIONS}
-          />
-          <Hint>深色主题在 Phase 2 接入</Hint>
         </Field>
       </div>
 
@@ -135,14 +183,37 @@ export function AccountPage() {
         style={{ animationDelay: "0.18s" }}
       >
         <Button variant="primary" onClick={handleSave}>
-          保存
+          {t("common.save")}
         </Button>
         <Button variant="ghost" onClick={handleReset}>
-          恢复默认
+          {t("common.reset")}
         </Button>
       </div>
     </div>
   );
+}
+
+/** 把图片文件缩到 size×size 居中裁剪，导出 jpeg base64。 */
+function resizeToDataUrl(file: File, size: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no 2d context"));
+      const scale = Math.max(size / img.width, size / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

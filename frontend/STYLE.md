@@ -60,6 +60,15 @@
 |---|---|---|
 | fade-up | opacity 0→1, translateY 12px→0, 0.5s cubic-bezier(.2,.7,.3,1) | `animate-fade-up` |
 | blink | typing 三点 | `animate-blink` |
+| halo-blink | 输入框蓝色光晕呼吸 opacity 0.3↔0.7, 3s | `.glow-halo`（自定义 CSS，非 Tailwind） |
+
+### 输入框光晕（`.glow-wrap` / `.glow-halo`）
+
+首页 composer 的蓝色呼吸光晕。结构与约束（踩过的坑）：
+
+- 光晕是独立装饰层 `.glow-halo`（`absolute inset-0`），内容层 `.relative` 分离 —— 这样聚焦时给光晕加 `brightness` 不会连带提亮输入文字。
+- 单一 `halo-blink` 动画常驻，**聚焦不切换 animation / box-shadow**（切换会重启动画造成闪烁），聚焦态只靠 `.glow-wrap:focus-within .glow-halo { filter: brightness(1.5) }` 增强。
+- 不要给输入框加 `focus-within:shadow-*`，会覆盖光晕 box-shadow。
 
 ## 视觉约束（不可破坏）
 

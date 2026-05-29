@@ -7,11 +7,15 @@ import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { Plus, History, SlidersHorizontal, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useChatStore } from "@/stores/chatStore";
+import { useProfileStore } from "@/stores/profileStore";
+import { useT } from "@/lib/i18n/useT";
 
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const resetToHome = useChatStore((s) => s.resetToHome);
+  const profile = useProfileStore((s) => s.profile);
+  const t = useT();
 
   const startNew = () => {
     resetToHome();
@@ -19,6 +23,7 @@ export function Sidebar() {
   };
 
   const isHome = location.pathname === "/";
+  const initial = (profile.displayName.trim()[0] ?? "U").toUpperCase();
 
   return (
     <aside className="w-sidebar shrink-0 bg-sidebar border-r border-line flex flex-col px-3.5">
@@ -39,7 +44,7 @@ export function Sidebar() {
           className={cn(navItemBase, isHome && navItemActive)}
         >
           <Plus size={19} className="shrink-0 text-ink" />
-          新建对话
+          {t("nav.newChat")}
         </button>
 
         <NavLink
@@ -49,7 +54,7 @@ export function Sidebar() {
           }
         >
           <History size={19} className="shrink-0 text-ink" />
-          历史对话
+          {t("nav.history")}
         </NavLink>
 
         <NavLink
@@ -59,7 +64,7 @@ export function Sidebar() {
           }
         >
           <SlidersHorizontal size={19} className="shrink-0 text-ink" />
-          API 配置
+          {t("nav.apiConfig")}
         </NavLink>
       </nav>
 
@@ -75,10 +80,18 @@ export function Sidebar() {
             )
           }
         >
-          <span className="w-[26px] h-[26px] rounded-full bg-[#e8e6e1] grid place-items-center text-ink-muted">
-            <User size={15} />
+          <span className="w-[26px] h-[26px] rounded-full overflow-hidden bg-[#e8e6e1] grid place-items-center text-ink-muted text-[12px] font-display font-bold">
+            {profile.avatar ? (
+              <img src={profile.avatar} alt="" className="w-full h-full object-cover" />
+            ) : profile.displayName.trim() ? (
+              initial
+            ) : (
+              <User size={15} />
+            )}
           </span>
-          <span className="text-sm font-medium">账号与设置</span>
+          <span className="text-sm font-medium truncate">
+            {profile.displayName.trim() || t("nav.account")}
+          </span>
         </NavLink>
       </div>
     </aside>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConfigStore } from "@/stores/configStore";
 import { toast } from "@/components/ui/toast";
+import { useT } from "@/lib/i18n/useT";
 
 const PROVIDER_OPTIONS = [
   { value: "openai", label: "OpenAI" },
@@ -23,6 +24,7 @@ const MODEL_OPTIONS = [
 ];
 
 export function ApiConfigPage() {
+  const t = useT();
   const config = useConfigStore((s) => s.config);
   const apiKey = useConfigStore((s) => s.apiKey);
   const connState = useConfigStore((s) => s.connState);
@@ -42,13 +44,13 @@ export function ApiConfigPage() {
   const handleSave = () => {
     update({ temperature: temp });
     save();
-    toast("配置已保存");
+    toast(t("api.saved"));
   };
 
   const handleReset = () => {
     reset();
     setTemp(0.7);
-    toast("已恢复默认");
+    toast(t("account.resetDone"));
   };
 
   const handleTest = () => {
@@ -62,10 +64,10 @@ export function ApiConfigPage() {
     <div className="max-w-[720px] mx-auto px-12 pt-[54px] pb-[80px]">
       <div className="mb-9 animate-fade-up">
         <h2 className="font-display text-[30px] font-extrabold tracking-[-0.02em]">
-          API 配置
+          {t("api.title")}
         </h2>
         <p className="text-ink-muted text-[15px] mt-2">
-          设置模型服务的连接方式与参数
+          {t("api.subtitle")}
         </p>
       </div>
 
@@ -74,12 +76,12 @@ export function ApiConfigPage() {
         className="bg-surface border border-line rounded-lg p-7 mb-5 animate-fade-up"
         style={{ animationDelay: "0.06s" }}
       >
-        <h3 className="text-[17px] font-bold mb-1">模型服务</h3>
+        <h3 className="text-[17px] font-bold mb-1">{t("api.service")}</h3>
         <p className="text-[13.5px] text-ink-muted mb-5">
-          选择服务提供商并填入凭证
+          {t("api.serviceDesc")}
         </p>
 
-        <Field label="服务提供商">
+        <Field label={t("api.provider")}>
           <Select
             value={config.provider}
             onValueChange={(v) => update({ provider: v as typeof config.provider })}
@@ -87,7 +89,7 @@ export function ApiConfigPage() {
           />
         </Field>
 
-        <Field label="API Key">
+        <Field label={t("api.key")}>
           <div className="relative">
             <Input
               type={showKey ? "text" : "password"}
@@ -104,20 +106,20 @@ export function ApiConfigPage() {
               {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          <Hint>密钥仅存储在本地浏览器,不会上传服务器</Hint>
+          <Hint>{t("api.keyHint")}</Hint>
         </Field>
 
-        <Field label="API 端点">
+        <Field label={t("api.endpoint")}>
           <Input
             type="url"
             value={config.endpoint}
             onChange={(e) => update({ endpoint: e.target.value })}
             placeholder="https://..."
           />
-          <Hint>指向你的 backend/server.py 或第三方兼容地址</Hint>
+          <Hint>{t("api.endpointHint")}</Hint>
         </Field>
 
-        <Field label="连接状态">
+        <Field label={t("api.connState")}>
           <div className="flex items-center gap-3">
             <span
               className={`inline-flex items-center gap-2 text-[13px] font-medium px-3 py-1.5 rounded-full ${
@@ -131,7 +133,7 @@ export function ApiConfigPage() {
                   isConnOk ? "bg-ok-dot" : "bg-[#ccc]"
                 }`}
               />
-              {isConnConnecting ? "连接中..." : isConnOk ? "已连接" : "未测试"}
+              {isConnConnecting ? t("api.connecting") : isConnOk ? t("api.connected") : t("api.untested")}
             </span>
             <Button
               variant="ghost"
@@ -140,7 +142,7 @@ export function ApiConfigPage() {
               disabled={isConnConnecting}
               className="text-[13px]"
             >
-              {isConnConnecting ? "测试中..." : "测试连接"}
+              {isConnConnecting ? t("api.testing") : t("api.test")}
             </Button>
           </div>
         </Field>
@@ -151,10 +153,10 @@ export function ApiConfigPage() {
         className="bg-surface border border-line rounded-lg p-7 animate-fade-up"
         style={{ animationDelay: "0.12s" }}
       >
-        <h3 className="text-[17px] font-bold mb-1">模型与参数</h3>
-        <p className="text-[13.5px] text-ink-muted mb-5">控制生成行为</p>
+        <h3 className="text-[17px] font-bold mb-1">{t("api.modelParams")}</h3>
+        <p className="text-[13.5px] text-ink-muted mb-5">{t("api.modelParamsDesc")}</p>
 
-        <Field label="模型">
+        <Field label={t("api.model")}>
           <Select
             value={config.model}
             onValueChange={(v) => update({ model: v })}
@@ -176,10 +178,10 @@ export function ApiConfigPage() {
               {temp.toFixed(1)}
             </span>
           </div>
-          <Hint>越低越稳定严谨,越高越发散有创意</Hint>
+          <Hint>{t("api.tempHint")}</Hint>
         </Field>
 
-        <Field label="最大输出 Tokens">
+        <Field label={t("api.maxTokens")}>
           <Input
             type="number"
             value={config.maxTokens}
@@ -192,10 +194,10 @@ export function ApiConfigPage() {
 
       <div className="mt-7 flex items-center gap-3 animate-fade-up" style={{ animationDelay: "0.18s" }}>
         <Button variant="primary" onClick={handleSave}>
-          保存配置
+          {t("api.saveConfig")}
         </Button>
         <Button variant="ghost" onClick={handleReset}>
-          恢复默认
+          {t("common.reset")}
         </Button>
       </div>
     </div>

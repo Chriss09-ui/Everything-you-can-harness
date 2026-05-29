@@ -62,8 +62,8 @@ interface Profile {
   displayName: string;
   email: string;
   bio: string;
+  avatar: string; // base64 data URL，空串表示用首字母占位
   language: "zh-CN" | "en-US";
-  theme: "light" | "dark" | "system";
 }
 ```
 
