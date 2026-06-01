@@ -31,10 +31,9 @@ from ..validation import parse_and_validate_artifact, validate_artifact
 
 
 def framework_design_node(state: HarnessBuilderState) -> dict:
-    is_revision = bool(state.get("arch_revision_brief"))
     update_run_state(state["run_id"], "FRAMEWORK_DESIGN")
     append_progress_log(state["run_id"], "FRAMEWORK_DESIGN",
-        f"Starting framework design ({'revision round' if is_revision else 'Round 1'})")
+        "Starting framework design")
 
     client = get_llm_client()
     brief = load_state_or_file(state, "user_brief_form")

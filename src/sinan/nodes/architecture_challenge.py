@@ -12,7 +12,10 @@ Writes:
     state["current_phase"]        — "ARCHITECTURE_CHALLENGE"
     state["risk_register"]        — appends arch risks onto the existing list
                                      (no reducer; node builds the full next
-                                     list)
+                                     list). On revision loops, drops any
+                                     prior ``type=arch_risk`` entries first
+                                     so fixed risks don't accumulate across
+                                     rounds.
     state["artifact_versions"]    — records architecture_review version
 
 Artifacts:
@@ -89,13 +92,22 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    # Append this node's new risks onto the running register. ``risk_register``
-    # used to be reducer-managed; the reducer has been removed (see state.py),
-    # so the node builds the full next-state list explicitly — matching the
-    # rest of the codebase's ``mutate + return state`` convention.
+    # Append this round's arch risks to the running register.
+    # ``risk_register`` is plain list now (no reducer, see state.py).
+    #
+    # Revision-loop hygiene: arch_challenge reruns every reject round, and
+    # each round produces a fresh list of risks against the newest
+    # architecture_pack. If we just concat onto the prior register, risks
+    # that the architect actually fixed in this round stay in the register
+    # as stale entries — and sinan_approval / harness_design_draft will
+    # surface them to the user as if they still applied. So we drop any
+    # prior ``arch_risk`` entries (this node's tag) before appending the
+    # new ones. Other risk sources (spec_challenge's ``ambiguity``) are
+    # untouched.
+    prior = [r for r in state.get("risk_register", []) if r.get("type") != "arch_risk"]
     state["architecture_review"] = review
     state["current_phase"] = "ARCHITECTURE_CHALLENGE"
     state["artifact_versions"] = {**state.get("artifact_versions", {}),
                                   "architecture_review": "1.0"}
-    state["risk_register"] = state.get("risk_register", []) + new_risks
+    state["risk_register"] = prior + new_risks
     return state

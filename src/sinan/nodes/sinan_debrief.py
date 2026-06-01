@@ -52,7 +52,18 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     response = parse_and_validate_artifact(raw, "sinan_debrief_display")
 
-    display = response.get("display", {})
+    # Type guard: schema only enforces that ``display`` is a top-level key, not
+    # that it's a dict. An LLM that returns ``{"display": "text"}`` or
+    # ``{"display": null}`` passes validation but crashes the .get() calls
+    # below. Coerce to a dict and fall back to empty fields.
+    display_raw = response.get("display", {})
+    if not isinstance(display_raw, dict):
+        append_progress_log(
+            state["run_id"], "SINAN_DEBRIEF",
+            f"LLM returned display as {type(display_raw).__name__}; coercing to empty",
+        )
+        display_raw = {}
+    display = display_raw
     questions = display.get("user_questions", [])
     aligned = display.get("aligned_points", [])
     remaining = display.get("remaining_disagreements", [])
@@ -80,7 +91,15 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     for i, q in enumerate(questions, 1):
         print(f"\n  问题 {i}: {q}")
         while True:
-            line = input("    > ").strip()
+            try:
+                line = input("    > ").strip()
+            except EOFError:
+                # Non-interactive env (piped stdin / CI): treat as skip.
+                # Tests that need a specific answer monkeypatch input()
+                # directly. Skipping every question puts the user into the
+                # "unresolved_risks" branch below where they can at least
+                # see the risk summary before the run aborts.
+                line = ""
             if line.lower() in ("skip", "done", ""):
                 answers.append(None)
                 answer_records.append({

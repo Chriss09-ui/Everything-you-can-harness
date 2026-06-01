@@ -430,7 +430,21 @@ def append_decision_log(run_id: str, decision: dict) -> None:
     if decision.get("rationale"):
         entry += f"**Rationale:** {decision['rationale']}\n\n"
     if decision.get("risks"):
-        entry += f"**Risks:** {decision['risks']}\n\n"
+        # ``risks`` may be a list of strings or dicts. Render as markdown
+        # bullets instead of the Python repr (``['a', 'b']``) which no
+        # human reader can scan.
+        risks = decision["risks"]
+        if isinstance(risks, list):
+            entry += "**Risks:**\n\n"
+            for r in risks:
+                if isinstance(r, dict):
+                    item = r.get("item") or r.get("description") or ""
+                else:
+                    item = str(r)
+                entry += f"- {item}\n"
+            entry += "\n"
+        else:
+            entry += f"**Risks:** {risks}\n\n"
     with open(log_path, "a") as f:
         f.write(entry)
 
