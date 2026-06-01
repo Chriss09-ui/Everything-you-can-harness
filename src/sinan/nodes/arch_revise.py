@@ -45,6 +45,15 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     resume = state.get("resume_payload") or {}
     user_intent = resume.get("user_intent", "")
 
+    # Strip the traceability fields zonggong_integrate embedded in the pack.
+    # Otherwise the prompt dumps 3x the relevant tokens for ``subagent_outputs``
+    # + ``framework_design`` + ``design_evolution``; the reviser only needs
+    # to see the actual architecture decisions.
+    arch_for_prompt = {
+        k: v for k, v in arch.items()
+        if k not in ("subagent_outputs", "framework_design", "design_evolution")
+    }
+
     user = (
         f"【第 {revision_round} 轮逆审发现 — 这是第 {revision_round} 次被拒绝后的修复】\n"
         f"逆审评分: {review.get('challenge_score', '?')}/10\n"
@@ -59,7 +68,7 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
         + ("\n".join(f"  - {f}" for f in review.get("failure_mode_omissions", [])) or "  （无）") + "\n\n"
         f"复杂度关注:\n"
         + ("\n".join(f"  - {c}" for c in review.get("cost_complexity_concerns", [])) or "  （无）") + "\n\n"
-        f"【上版架构设计】\n{json.dumps(arch, indent=2, ensure_ascii=False)}\n\n"
+        f"【上版架构设计】\n{json.dumps(arch_for_prompt, indent=2, ensure_ascii=False)}\n\n"
         f"【用户需求契约】\n{json.dumps(brief, indent=2, ensure_ascii=False)}\n\n"
         f"【用户在拒绝时提供的修改方向】\n{user_intent or '（用户未提供额外说明）'}\n\n"
         "请将以上逆审发现和用户修改意图翻译为具体的修复指令。"
@@ -76,7 +85,7 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     revision_brief["revision_round"] = revision_round
     validate_artifact(revision_brief, "arch_revision_brief")
 
-    write_json(state["run_id"], "arch_revision_brief.json", revision_brief)
+    write_json(state["run_id"], "arch_revision_brief.json", revision_brief, versioned=True)
     state["arch_revision_brief"] = revision_brief
     state["current_phase"] = "ARCH_REVISE"
     state["artifact_versions"]["arch_revision_brief"] = "1.0"

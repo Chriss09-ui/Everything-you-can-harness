@@ -9,9 +9,9 @@ Reads:
 Writes:
     state["spec_review"]       — critical review with challenge_score
     state["current_phase"]     — "SPEC_CHALLENGE"
-    state["risk_register"]     — appends ambiguity risks (via reducer merge —
-                                  node returns partial update, never mutates
-                                  the running list directly)
+    state["risk_register"]     — appends ambiguity risks onto the existing
+                                  list (no reducer; node builds the full next
+                                  list)
     state["artifact_versions"] — records spec_review version
 
 Artifacts:
@@ -71,13 +71,15 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    # Partial return: ``risk_register`` is an Annotated list with operator.add
-    # reducer (see state.py). LangGraph will concat this onto the running
-    # list, which is safe even if other risk-writing nodes ran in parallel.
-    return {
-        "spec_review": review,
-        "current_phase": "SPEC_CHALLENGE",
-        "artifact_versions": {**state.get("artifact_versions", {}),
-                              "spec_review": "1.0"},
-        "risk_register": new_risks,
-    }
+    # Append this node's new risks to the running register. ``risk_register``
+    # used to be a reducer-managed field where returning only the new entries
+    # would concat them onto the running list; the reducer has been removed
+    # (see state.py for why), so the node now builds the full next-state list
+    # explicitly — matching the rest of the codebase's ``mutate + return
+    # state`` convention.
+    state["spec_review"] = review
+    state["current_phase"] = "SPEC_CHALLENGE"
+    state["artifact_versions"] = {**state.get("artifact_versions", {}),
+                                  "spec_review": "1.0"}
+    state["risk_register"] = state.get("risk_register", []) + new_risks
+    return state

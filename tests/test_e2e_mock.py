@@ -80,4 +80,40 @@ def test_full_pipeline_mock(monkeypatch):
     assert (run_dir / "decision_log.md").exists()
     assert (run_dir / "progress_log.md").exists()
 
+    # ── Deeper assertions: pin the architecture-debate actually ran ──
+    # Without these, a regression that skips subagent_review or
+    # framework_adjust could still pass the artifact-existence checks above
+    # (because those nodes write to the same files whether or not they did
+    # real work).
+    import json
+    arch_pack = json.loads((run_dir / "architecture_pack.json").read_text())
+    # architecture_pack must have gone through zonggong_integrate (contains
+    # the embedded ``design_evolution`` trace that node attaches).
+    assert "design_evolution" in arch_pack, (
+        f"architecture_pack missing design_evolution — zonggong_integrate "
+        f"did not run or was short-circuited: {list(arch_pack.keys())[:8]}"
+    )
+
+    # Sub-agent outputs / reviews must carry all three agents. The wrapper
+    # schema enforces this, but a regression that drops one agent should fail
+    # here, not silently in production.
+    subagent_outputs = json.loads((run_dir / "subagent_outputs.json").read_text())
+    assert set(subagent_outputs.keys()) >= {"memory", "handoff", "eval"}, (
+        f"subagent_outputs missing agents: {subagent_outputs.keys()}"
+    )
+    subagent_reviews = json.loads((run_dir / "subagent_reviews.json").read_text())
+    assert set(subagent_reviews.keys()) >= {"memory", "handoff", "eval"}, (
+        f"subagent_reviews missing agents: {subagent_reviews.keys()}"
+    )
+
+    # The framework_design.json on disk must reflect the post-adjustment
+    # framework — i.e. ``framework_adjust`` must have overwritten the live
+    # file. (Earlier bug: that node wrote to framework_design_v2.json
+    # instead, leaving framework_design.json stuck on the Round-1 output.)
+    framework = json.loads((run_dir / "framework_design.json").read_text())
+    assert "nodes" in framework and "edges" in framework, (
+        f"framework_design.json must look like a framework dict, got: "
+        f"{list(framework.keys())[:6]}"
+    )
+
     print(f"\n✅ E2E test passed. Artifacts in: {run_dir}")

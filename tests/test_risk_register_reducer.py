@@ -1,73 +1,121 @@
-"""Regression tests for risk_register reducer (M7 fix).
+"""Tests for risk_register accumulation behavior.
 
-Before M7, spec_challenge and architecture_challenge mutated
-state["risk_register"] in place via list.extend(). That works for serial
-execution but silently loses entries under concurrent writes. The fix gives
-risk_register an operator.add reducer and makes the nodes return partial
-updates like {"risk_register": [...new risks...]}.
+History: this file used to guard the ``Annotated[list[dict], operator.add]``
+reducer on ``risk_register``, which was added (M7) so that potential future
+fan-out of risk discovery could append safely. In practice:
+
+  1. The graph is purely serial — the reducer's concurrent-merge property
+     was never exercised.
+  2. The reducer actively caused a bug: most nodes returned the FULL state
+     dict (``return state``) after mutating it. LangGraph applied the reducer
+     to the entire returned list, so every serial node re-applied the
+     accumulated risks against the running register. A real run produced
+     2072 entries from ~2 source risks after ~11 serial nodes.
+
+The reducer has been removed. ``risk_register`` is now a plain list, and
+risk-writing nodes (``spec_challenge``, ``architecture_challenge``) build
+the next-state list explicitly by reading the prior list and extending it.
+
+These tests pin the post-fix behavior so:
+  - the running register survives each layer (no overwrite),
+  - the bug cannot silently come back (a log assertion if somehow the
+    exponential duplication reappears).
 """
-import operator
 import sys
+import uuid
 from pathlib import Path
-from typing import Annotated, get_type_hints
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from sinan.state import make_initial_state, HarnessBuilderState
 
+def test_risk_register_is_a_plain_list_field():
+    """``risk_register`` must not carry a reducer annotation. Adding one back
+    without also converting every other node to partial-return style would
+    reintroduce the 2072-risks bug from the deletion note."""
+    from typing import get_type_hints, Annotated
+    from sinan.state import HarnessBuilderState
 
-def test_risk_register_is_annotated_with_add_reducer():
-    """The state schema must declare risk_register with operator.add so
-    concurrent writes concat instead of overwrite."""
     hints = get_type_hints(HarnessBuilderState, include_extras=True)
     rr = hints["risk_register"]
-    # Annotated[list[dict], operator.add]
+    # No __metadata__ ⇒ no Annotated reducer. A plain ``list[dict]`` type has
+    # no metadata.
     meta = getattr(rr, "__metadata__", None)
-    assert meta is not None, f"risk_register must be Annotated — got {rr!r}"
-    assert operator.add in meta, (
-        f"risk_register reducer must be operator.add, got metadata {meta!r}"
+    assert meta is None, (
+        f"risk_register must NOT be Annotated (no reducer) — got {rr!r}. "
+        "See state.py comments before re-adding a reducer."
     )
 
 
-def test_partial_returns_accumulate_via_reducer():
-    """Simulate the two node partial returns and verify reducer math."""
+def test_partial_returns_accumulate_via_explicit_extend():
+    """Simulate the two risk-writing nodes' write pattern and verify the
+    running register carries both batches (the M7 functional goal)."""
+    from sinan.state import make_initial_state
+
     state = make_initial_state("reducer_test")
 
-    # What spec_challenge returns (paraphrased)
-    partial_spec = {"risk_register": [
-        {"type": "ambiguity", "item": " unclear goal"},
-    ]}
-    # What architecture_challenge returns
-    partial_arch = {"risk_register": [
+    # What spec_challenge would do (paraphrased): read prior list + extend
+    new_spec = [{"type": "ambiguity", "item": " unclear goal"}]
+    state["risk_register"] = state.get("risk_register", []) + new_spec
+
+    # What architecture_challenge would do
+    new_arch = [
         {"type": "arch_risk", "item": "over-engineered"},
         {"type": "arch_risk", "item": "missing failure mode"},
-    ]}
-
-    existing = state.get("risk_register", [])
-    merged = operator.add(
-        operator.add(existing, partial_spec["risk_register"]),
-        partial_arch["risk_register"],
-    )
-    assert len(merged) == 3, f"expected 3 risks accumulated, got {len(merged)}"
-
-
-def test_concurrent_writes_do_not_lose_entries():
-    """The bug M7 prevents: if two writers ran in parallel and both read
-    ``state["risk_register"]`` at the same instant, then both .extend()ed
-    their own list and wrote back, only the last writer's risks survive.
-    The reducer model avoids this — each writer only contributes its own
-    delta and LangGraph's channel layer serializes the merge."""
-    # Simulate three concurrent partial updates (e.g. three reviewer nodes)
-    partials = [
-        {"risk_register": [{"from": "reviewer_1"}]},
-        {"risk_register": [{"from": "reviewer_2"}]},
-        {"risk_register": [{"from": "reviewer_3"}]},
     ]
-    # The reducer applies them left-to-right; the final list contains all 3
-    state = make_initial_state("concurrent_test")
-    base = state.get("risk_register", [])
-    for p in partials:
-        base = operator.add(base, p["risk_register"])
-    assert len(base) == 3, f"concurrent merge lost entries: {base!r}"
-    sources = sorted(r["from"] for r in base)
-    assert sources == ["reviewer_1", "reviewer_2", "reviewer_3"]
+    state["risk_register"] = state.get("risk_register", []) + new_arch
+
+    assert len(state["risk_register"]) == 3, (
+        f"expected 3 risks accumulated, got {len(state['risk_register'])}"
+    )
+
+
+def test_no_duplication_after_sequential_invocation(monkeypatch):
+    """End-to-end guard against the actual bug: a single full-pipeline mock
+    run must produce O(unique-risks) entries, not 2^N duplicates. If a
+    future change reintroduces the reducer or otherwise breaks the
+    accumulation scheme, the count here will balloon and this test will fail.
+    """
+    import io
+    import sys as _sys
+
+    from sinan.state import make_initial_state
+    from sinan.graph import compile_graph
+    from sinan.nodes.intake import intake_node
+    from sinan.mock_responses import register_mock_responses
+
+    register_mock_responses()
+
+    inputs = iter([
+        "约10任务", "完整架构图", "邮件告警", "两周内",
+        "proceed",
+        "", "", "", "", "", "", "", "",
+        "approve",
+    ])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+    run_id = f"risk_no_dup_{uuid.uuid4().hex[:8]}"
+    state = make_initial_state(run_id)
+    state = intake_node(state, "构建一个多 agent 系统")
+
+    saved = _sys.stdout
+    _sys.stdout = io.StringIO()
+    try:
+        graph = compile_graph()
+        final = graph.invoke(state)
+    finally:
+        _sys.stdout = saved
+
+    risks = final.get("risk_register", [])
+    # Mocks produce exactly 2 ambiguity risks (from spec_challenge) + 4 arch
+    # risks (from architecture_challenge). Full pipeline has no other
+    # risk-writing nodes in the design layer. Anything over ~12 is the bug
+    # coming back (parallel + doubling).
+    assert len(risks) <= 12, (
+        f"risk_register has {len(risks)} entries — expected <= 12. "
+        f"This is the exponential-duplication bug described in state.py "
+        f"coming back. First 3 risks: {risks[:3]}."
+    )
+    assert len(risks) >= 4, (
+        f"risk_register should contain at least the architecture_challenge "
+        f"risks; got {len(risks)} {risks}"
+    )

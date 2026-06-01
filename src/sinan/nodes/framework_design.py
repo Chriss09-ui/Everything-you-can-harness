@@ -31,8 +31,10 @@ from ..validation import parse_and_validate_artifact, validate_artifact
 
 
 def framework_design_node(state: HarnessBuilderState) -> dict:
+    is_revision = bool(state.get("arch_revision_brief"))
     update_run_state(state["run_id"], "FRAMEWORK_DESIGN")
-    append_progress_log(state["run_id"], "FRAMEWORK_DESIGN", "Starting framework design (Round 1)")
+    append_progress_log(state["run_id"], "FRAMEWORK_DESIGN",
+        f"Starting framework design ({'revision round' if is_revision else 'Round 1'})")
 
     client = get_llm_client()
     brief = load_state_or_file(state, "user_brief_form")
@@ -49,9 +51,19 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
     brief_text = json.dumps(brief, indent=2, ensure_ascii=False)
 
     revision_context = _build_revision_context(state)
+    is_revision = bool(revision_context)
+    # Round-1 prompt: ask for an initial framework from scratch.
+    # Revision-round prompt: drop the misleading "第一轮" framing — the
+    # revision_context block above already says "第 N 轮修复指令", and the
+    # previous „【第一轮】请设计…‟ suffix confused the LLM into re-generating
+    # from scratch instead of editing the prior design per the revision brief.
+    if is_revision:
+        round_suffix = "请按上述修复指令调整 framework，输出调整后的完整 framework。"
+    else:
+        round_suffix = "【第一轮】请设计 harness 的整体框架结构。只输出初始方案即可。"
 
     system = get_prompt("zonggong_framework")
-    user = f"User Brief Form:\n{brief_text}\n{revision_context}\n\n【第一轮】请设计 harness 的整体框架结构。只输出初始方案即可。"
+    user = f"User Brief Form:\n{brief_text}\n{revision_context}\n\n{round_suffix}"
 
     raw = client.generate(system, user)
     framework = parse_and_validate_artifact(raw, "framework_design")
@@ -63,14 +75,18 @@ def framework_design_node(state: HarnessBuilderState) -> dict:
 
     append_progress_log(
         state["run_id"], "FRAMEWORK_DESIGN",
-        f"Initial framework generated: {len(framework.get('nodes', []))} nodes, "
+        f"{'Revision' if is_revision else 'Initial'} framework generated: "
+        f"{len(framework.get('nodes', []))} nodes, "
         f"{len(framework.get('phase_sequence', []))} phases"
     )
     append_decision_log(state["run_id"], {
         "phase": "FRAMEWORK_DESIGN",
         "type": "artifact_generated",
-        "content": "Round 1: Initial framework design generated",
-        "rationale": "Framework agent produced initial architecture based on user brief",
+        "content": f"{'Revision round' if is_revision else 'Round 1'}: "
+                   f"Framework design generated",
+        "rationale": "Framework agent produced "
+                     f"{'revised' if is_revision else 'initial'} "
+                     "architecture based on user brief",
     })
     finalize_phase(state["run_id"])
 

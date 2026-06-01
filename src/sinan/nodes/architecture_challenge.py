@@ -10,9 +10,9 @@ Reads:
 Writes:
     state["architecture_review"] — critical review with challenge_score
     state["current_phase"]        — "ARCHITECTURE_CHALLENGE"
-    state["risk_register"]        — appends arch risks (via reducer merge —
-                                     node returns partial update, never
-                                     mutates the running list directly)
+    state["risk_register"]        — appends arch risks onto the existing list
+                                     (no reducer; node builds the full next
+                                     list)
     state["artifact_versions"]    — records architecture_review version
 
 Artifacts:
@@ -43,8 +43,19 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     arch = load_state_or_file(state, "architecture_pack")
     brief = load_state_or_file(state, "user_brief_form")
 
+    # ``zonggong_integrate`` embeds ``subagent_outputs``, ``framework_design``
+    # and ``design_evolution`` into the architecture_pack for traceability
+    # — but those ~3x the token cost when fed verbatim to the reviewer LLM
+    # and are not what the reviewer is supposed to be challenging. Strip the
+    # embedded trace fields before composing the Nishen prompt; the on-disk
+    # ``architecture_pack.json`` and the state value are unchanged.
+    arch_for_prompt = {
+        k: v for k, v in arch.items()
+        if k not in ("subagent_outputs", "framework_design", "design_evolution")
+    }
+
     user = (
-        f"Architecture Pack:\n{json.dumps(arch, indent=2, ensure_ascii=False)}\n\n"
+        f"Architecture Pack:\n{json.dumps(arch_for_prompt, indent=2, ensure_ascii=False)}\n\n"
         f"User Brief Form:\n{json.dumps(brief, indent=2, ensure_ascii=False)}\n\n"
         f"请批判性审查以上架构设计，找出缺陷。"
     )
@@ -52,7 +63,12 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     review = parse_and_validate_artifact(raw, "architecture_review")
 
-    write_json(state["run_id"], "architecture_review.json", review)
+    # versioned=True: architecture_challenge reruns every revision loop round
+    # (after arch_revise → framework_design rebuilds the architecture_pack that
+    # this node reviews). Without versioned write, each round silently wipes
+    # the prior review, losing the audit trail of how the architect's thinking
+    # evolved across revisions.
+    write_json(state["run_id"], "architecture_review.json", review, versioned=True)
 
     score = review.get("challenge_score", 0)
     new_risks = [
@@ -73,13 +89,13 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     })
     finalize_phase(state["run_id"])
 
-    # Partial return: ``risk_register`` uses operator.add reducer, so this
-    # list gets concat'd onto the running register safely even if other
-    # risk-writing nodes run in parallel.
-    return {
-        "architecture_review": review,
-        "current_phase": "ARCHITECTURE_CHALLENGE",
-        "artifact_versions": {**state.get("artifact_versions", {}),
-                              "architecture_review": "1.0"},
-        "risk_register": new_risks,
-    }
+    # Append this node's new risks onto the running register. ``risk_register``
+    # used to be reducer-managed; the reducer has been removed (see state.py),
+    # so the node builds the full next-state list explicitly — matching the
+    # rest of the codebase's ``mutate + return state`` convention.
+    state["architecture_review"] = review
+    state["current_phase"] = "ARCHITECTURE_CHALLENGE"
+    state["artifact_versions"] = {**state.get("artifact_versions", {}),
+                                  "architecture_review": "1.0"}
+    state["risk_register"] = state.get("risk_register", []) + new_risks
+    return state

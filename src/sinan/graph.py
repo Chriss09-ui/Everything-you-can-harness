@@ -130,14 +130,18 @@ def _approval_outcome_router(state: HarnessBuilderState) -> str:
     draft/md via the debate loop → final_spec again).
 
     ``sinan_approval`` increments ``arch_reject_count`` *before* routing, so
-    the counter is already at N by the time we check it here. Allow up to 3
-    rejections; on the 3rd, raise.
+    the counter is already at N by the time we check it here. The docs
+    (architecture_layer.md / NODES.md) say the user gets up to 3 reject
+    rounds — meaning rounds 1, 2, 3 each fire ``arch_revise`` and the 4th
+    reject is the one that raises. Checking ``>= 4`` here makes the 3rd
+    revise actually run; the previous ``>= 3`` check would raise on the 3rd
+    reject before the revise fired, so the user only ever saw 2 rounds.
     """
     payload = state.get("resume_payload") or {}
     choice = payload.get("approval", "")
 
     reject_count = state.get("arch_reject_count", 0)
-    if choice in ("reject", "request_changes") and reject_count >= 3:
+    if choice in ("reject", "request_changes") and reject_count > 3:
         raise RuntimeError(
             f"Architecture rejected {reject_count} times. "
             "Maximum retry limit reached. Please review the design manually."

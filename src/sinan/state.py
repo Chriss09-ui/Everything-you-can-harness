@@ -1,7 +1,6 @@
 """HarnessBuilderState — the central state schema for the Sinan workflow."""
 from __future__ import annotations
-import operator
-from typing import Annotated, TypedDict, Optional, Literal
+from typing import TypedDict, Optional, Literal
 from datetime import datetime, timezone
 
 
@@ -62,18 +61,31 @@ class HarnessBuilderState(TypedDict):
 
     # ── Risk ──
     # Each risk-writing node (spec_challenge, architecture_challenge) returns
-    # a partial update {"risk_register": [...its new risks...]}. The
-    # ``operator.add`` reducer concatenates them onto the running list, which
-    # is safe under concurrent writes (e.g. if risk discovery is later fanned
-    # out into parallel reviewers — list.extend from a shared reference would
-    # silently lose entries in that scenario).
-    risk_register: Annotated[list[dict], operator.add]
+    # the FULL post-state risk_register list — it reads the prior list and
+    # extends it. This is the plain LangGraph node convention: a returned
+    # value replaces the channel value (no reducer).
+    #
+    # Previously this field used ``Annotated[list[dict], operator.add]`` so a
+    # partial-return node could append to a running list. Two problems:
+    #
+    #   1. The graph is purely serial; no fan-out exists, so the reducer's
+    #      "concurrent-safe concat" property is unused.
+    #
+    #   2. Mixing ``return state`` style nodes (most of the codebase) with a
+    #      reducer-managed field caused exponential duplication: every serial
+    #      node that returned the full state re-applied the entire
+    #      accumulated list against the running register. A real run produced
+    #      2072 risk entries from 2 source entries after ~11 serial nodes.
+    #
+    # If a future change adds parallel risk writers, reintroduce the reducer
+    # BUT also convert EVERY node to partial-return style at the same time.
+    # Mixing the two is what made the reducer actively harmful.
+    risk_register: list[dict]
 
     # ── Messages ──
-    # Same reducer pattern as risk_register: nodes append via partial return,
-    # not by mutating state["messages"] directly. Safe under any future
-    # fan-out that uses messages.
-    messages: Annotated[list[dict], operator.add]
+    # Same reasoning as ``risk_register``: no reducer, plain list. New
+    # appenders extend the prior list in their return.
+    messages: list[dict]
 
 
 def make_initial_state(run_id: str) -> HarnessBuilderState:

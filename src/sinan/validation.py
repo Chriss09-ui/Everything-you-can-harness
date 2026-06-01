@@ -15,7 +15,20 @@ import re
 
 
 _FENCE_RE = re.compile(
-    r"```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*)```",
+    r"```[a-zA-Z0-9_+\-]*\s*\n(?P<body>.*?)```",
+    re.DOTALL,
+)
+"""
+Non-greedy (``.*?``) so that when an LLM returns multiple fenced blocks
+(common pattern: an example fence followed by the real JSON fence), the
+regex matches the FIRST complete fence rather than spanning from the
+first opening to the last closing.
+
+If the LLM tags the JSON block specifically (`` ```json ``), prefer that
+one — heuristic via ``_JSON_FENCE_RE`` below.
+"""
+_JSON_FENCE_RE = re.compile(
+    r"```json\s*\n(?P<body>.*?)```",
     re.DOTALL,
 )
 
@@ -156,12 +169,23 @@ def parse_llm_json(raw: str, artifact_name: str) -> dict:
     """Strip markdown fences and parse a JSON-only LLM response.
 
     Tolerates leading/trailing prose ("Here is the JSON:\n```json\n...\n```\n
-    Let me know…") — extract the first fenced block if present, otherwise
-    try the whole text. Refuses to silently return a half-parsed object by
-    raising ``ValueError`` on any failure.
+    Let me know…") — extract a fenced JSON block if present, otherwise try
+    the whole text.
+
+    Prefers a `` ```json ``-tagged fence when present (LLMs commonly tag
+    the real JSON block while using untagged or other-language fences for
+    example code). Falls back to the first fenced block of any language.
+
+    Refuses to silently return a half-parsed object by raising
+    ``ValueError`` on any failure.
     """
     text = raw.strip()
-    m = _FENCE_RE.search(text)
+    # Prefer a ```json```-tagged block.
+    m = _JSON_FENCE_RE.search(text)
+    if not m:
+        # Fallback to any fenced block (non-greedy matches the FIRST
+        # complete fence, not a greedy span across multiple fences).
+        m = _FENCE_RE.search(text)
     if m:
         text = m.group("body").strip()
     try:

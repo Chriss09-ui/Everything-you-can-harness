@@ -155,8 +155,8 @@ Routes:
 | Agent | 总工框架设计师 |
 | Layer | 架构层 (四步辩论 Step 3) |
 | Reads | `framework_design`, `subagent_reviews` |
-| Writes | `framework_adjustments`, `current_phase`, `artifact_versions` |
-| Artifacts | `framework_adjustment.json` |
+| Writes | `framework_design` (overwrites Round-1 with the adjusted version; Round-1 is auto-archived as `framework_design_v1.json`), `framework_adjustments`, `current_phase`, `artifact_versions` |
+| Artifacts | `framework_adjustment.json`, `framework_design.json` (versioned — see Artifacts table below) |
 | Routes | → `zonggong_integrate` (linear) |
 
 ### 9. zonggong_integrate

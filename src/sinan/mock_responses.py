@@ -200,7 +200,7 @@ def register_mock_responses() -> None:
         }
     }, ensure_ascii=False))
 
-    # 框架设计师子 agent
+    # 框架设计师子 agent — Round 1 (initial framework generation)
     MockLLMClient.register("【第一轮】请设计 harness 的整体框架结构", json.dumps({
         "nodes": [
             {"name": "spec_expansion", "role": "扩展需求"},
@@ -226,6 +226,40 @@ def register_mock_responses() -> None:
         "entry_point": "spec_expansion",
         "end_state": "FINAL_SPEC",
         "design_rationale": "先把需求固化为文件契约，再让架构层和研发层只消费明确 artifact。"
+    }, ensure_ascii=False))
+
+    # 框架设计师子 agent — Revision round. Triggered when ``framework_design``
+    # was re-entered from ``arch_revise → framework_design`` (rather than the
+    # linear first-run path). The user-prompt suffix in that case is
+    # ``"请按上述修复指令调整 framework..."`` — distinct from the Round-1
+    # ``"【第一轮】请设计..."`` suffix. The shape is the same as Round 1 but
+    # the content reflects an edited framework (a couple of role strings are
+    # adjusted so a test can tell by inspection which path produced it).
+    MockLLMClient.register("请按上述修复指令调整 framework", json.dumps({
+        "nodes": [
+            {"name": "spec_expansion", "role": "扩展需求"},
+            {"name": "spec_challenge", "role": "质疑需求"},
+            {"name": "brief_compile", "role": "定稿需求契约"},
+            {"name": "framework_design", "role": "设计 harness 框架（已修订）"},
+            {"name": "architecture_challenge", "role": "逆审架构"},
+            {"name": "approval_gate", "role": "风险分级"},
+            {"name": "final_spec", "role": "编译研发层设计稿"}
+        ],
+        "edges": [
+            {"from": "spec_expansion", "to": "spec_challenge"},
+            {"from": "spec_challenge", "to": "brief_debate"},
+            {"from": "brief_compile", "to": "framework_design"},
+            {"from": "framework_design", "to": "architecture_challenge"},
+            {"from": "architecture_challenge", "to": "approval_gate"}
+        ],
+        "conditional_edges": [
+            {"condition": "risk_level == low", "routes": "approval_gate -> final_spec"},
+            {"condition": "risk_level != low", "routes": "approval_gate -> sinan_approval"}
+        ],
+        "phase_sequence": ["需求契约", "架构设计", "架构逆审", "风险审批", "最终设计稿"],
+        "entry_point": "spec_expansion",
+        "end_state": "FINAL_SPEC",
+        "design_rationale": "按 arch_revision_brief 调整后保留契约化交接主结构。"
     }, ensure_ascii=False))
 
     # 记忆模块设计师子 agent
@@ -289,8 +323,11 @@ def register_mock_responses() -> None:
         "preserved_elements": ["契约化交接", "四步辩论结构"],
     }, ensure_ascii=False))
 
-    # 逆审修订简报 (Arch Reviser) — triggered by "请基于以上信息生成结构化的修订简报"
-    MockLLMClient.register("生成结构化的修订简报", json.dumps({
+    # 逆审修订简报 (Arch Reviser) — triggered by the actual user-prompt suffix
+    # ``arch_revise_node`` sends to the LLM (matches the prompt regardless of
+    # which ``arch_revise`` prompt template is in use, so long as the suffix
+    # matches the code path).
+    MockLLMClient.register("翻译为具体的修复指令", json.dumps({
         "revision_summary": "缩小过度设计、补全 handoff 缺口",
         "specific_issues": [
             {

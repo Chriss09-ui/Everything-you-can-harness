@@ -27,7 +27,12 @@ def intake_node(state: HarnessBuilderState, user_input: str) -> dict:
     # from the very first phase, not set later by spec_expansion.
     update_run_state(state["run_id"], "INTAKE", started_at=state.get("started_at", ""))
 
-    append_progress_log(state["run_id"], "INTAKE", f"Received user input: {user_input[:80]}...")
+    # Only append "..." when the input was actually truncated; otherwise we
+    # log a misleading marker that implies we have less than we do.
+    preview = user_input[:80]
+    if len(user_input) > 80:
+        preview = preview + "..."
+    append_progress_log(state["run_id"], "INTAKE", f"Received user input: {preview}")
     append_decision_log(state["run_id"], {
         "phase": "INTAKE",
         "type": "intake",

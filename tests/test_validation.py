@@ -153,3 +153,47 @@ def test_parse_llm_json_plain_json_still_works():
     """No fence — just JSON — should still parse (the common case)."""
     data = parse_llm_json('{"primary_goal": "g"}', "framework_design")
     assert data["primary_goal"] == "g"
+
+
+def test_parse_llm_json_prefers_json_tagged_block_when_multiple_fences():
+    """When the LLM returns multiple fenced blocks (typical pattern: an
+    example in TS / Python first, then the real JSON), the parser must
+    pick the JSON-tagged block, not whatever comes first.
+
+    Before the fix: the greedy ``.*`` regex spanned the first opening
+    fence to the LAST closing fence, producing a body that contained
+    the example code + prose + real-JSON-prefix → parse failed. Now the
+    parser prefers `` ```json `` and falls back to the first non-greedy
+    fence match.
+    """
+    raw = (
+        "Here's an example in TypeScript:\n"
+        "```typescript\n"
+        "const x = { foo: 'bar' };\n"
+        "```\n\n"
+        "But the real JSON is:\n"
+        "```json\n"
+        '{"primary_goal": "g", "use_case_summary": "u", "stakeholders": [], '
+        '"scope_inclusions": [], "scope_exclusions": [], "success_criteria": [], '
+        '"assumptions": [], "known_constraints": [], "persona_qualities": [], '
+        '"risk_tolerance": "medium"}\n'
+        "```\n"
+        "Let me know!"
+    )
+    data = parse_llm_json(raw, "requirement_pack")
+    assert data["primary_goal"] == "g", (
+        f"parser picked the wrong fence or none — got {data}"
+    )
+
+
+def test_parse_llm_json_untagged_fence_still_works_after_fix():
+    """A single untagged fence around JSON must still parse. (Regression
+    guard: don't ONLY prefer `` ```json `` — keep the fallback working.)"""
+    raw = (
+        "Result:\n"
+        "```\n"
+        '{"primary_goal": "g"}\n'
+        "```\n"
+    )
+    data = parse_llm_json(raw, "framework_design")
+    assert data["primary_goal"] == "g"

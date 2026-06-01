@@ -1,12 +1,15 @@
 """CLI entrypoint for 司南 Harness Builder.
 
 Usage:
-    python -m sinan.cli                       # full pipeline: design → coding
-    python -m sinan.cli --from-brief <id>     # skip requirement layer; run
-                                              # architecture + coding from
-                                              # runs/<id>/user_brief_form.json
-    python -m sinan.cli --from-design <id>    # skip design layer; resume coding
-                                              # from runs/<id>/harness_design_draft.json
+    python -m sinan.cli                            # full pipeline: design → coding
+    python -m sinan.cli --design-only              # requirement + architecture only
+    python -m sinan.cli --from-brief <id>          # skip requirement layer; run
+                                                   # architecture + coding from
+                                                   # runs/<id>/user_brief_form.json
+    python -m sinan.cli --from-brief <id> --design-only
+                                                   # architecture only (no coding)
+    python -m sinan.cli --from-design <id>         # skip design layer; resume coding
+                                                   # from runs/<id>/harness_design_draft.json
 """
 from __future__ import annotations
 import argparse
@@ -46,6 +49,13 @@ def main():
         metavar="RUN_ID",
         help="Skip design layer; resume coding layer from "
              "runs/<RUN_ID>/harness_design_draft.json",
+    )
+    parser.add_argument(
+        "--design-only",
+        action="store_true",
+        help="Stop after the design layer (requirement + architecture); "
+             "skip the coding layer. Works with the default pipeline and "
+             "--from-brief.",
     )
     args = parser.parse_args()
 
@@ -93,7 +103,7 @@ def main():
             print("请重新跑需求层以生成合法契约。")
             sys.exit(1)
         print(f"从 run_id={run_id} 的需求契约恢复，跳过需求层。")
-        _run_architecture_then_coding(run_id, brief_path)
+        _run_architecture_then_coding(run_id, brief_path, args)
         return
 
     # ── Full pipeline ──
@@ -143,11 +153,15 @@ def main():
         raise
 
     # ── Phase 2: Coding Layer ──
+    if args.design_only:
+        print(f"\n--design-only：跳过研发层。设计稿已保存在 runs/{run_id}/")
+        return
+
     harness_draft = final_state.get("harness_design_draft") or {}
     _run_coding_layer(run_id, harness_draft)
 
 
-def _run_architecture_then_coding(run_id: str, brief_path: Path) -> None:
+def _run_architecture_then_coding(run_id: str, brief_path: Path, args) -> None:
     """Skip the requirement layer; run architecture + coding from an existing brief."""
     with open(brief_path, encoding="utf-8") as f:
         brief = json.load(f)
@@ -169,7 +183,7 @@ def _run_architecture_then_coding(run_id: str, brief_path: Path) -> None:
     append_progress_log(run_id, "SYSTEM",
         f"Resumed at architecture layer from {brief_path.name}")
 
-    print(f"开始重跑架构层 + 研发层...\n")
+    print(f"开始重跑架构层{'（--design-only，跳过研发层）' if args.design_only else ''}...\n")
 
     graph = compile_architecture_graph()
     try:
@@ -187,6 +201,11 @@ def _run_architecture_then_coding(run_id: str, brief_path: Path) -> None:
         raise
 
     harness_draft = final_state.get("harness_design_draft") or {}
+
+    if args.design_only:
+        print(f"\n--design-only：跳过研发层。设计稿已保存在 runs/{run_id}/")
+        return
+
     _run_coding_layer(run_id, harness_draft)
 
 
@@ -202,7 +221,11 @@ def _count_arch_rejects(run_id: str) -> int:
     try:
         with open(log_path, encoding="utf-8") as f:
             content = f.read()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # UnicodeDecodeError is not a subclass of OSError, so it needs to
+        # be caught explicitly. A corrupted log (e.g. partial write with
+        # bad encoding) should not break a resume — treat it as zero prior
+        # rejects, which gives the user the full fresh budget.
         return 0
     count = 0
     for line in content.splitlines():

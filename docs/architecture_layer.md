@@ -104,7 +104,7 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 | 文件 | 写入者 | 用途 |
 |---|---|---|
-| `framework_design.json` | `framework_design` | 总工初稿 |
+| `framework_design.json` | `framework_design` (Round 1) → `framework_adjust` (覆盖为调整后的 live 版) | 总工框架 live 版；Round-1 框架在 framework_adjust 写入时自动归档成 `framework_design_v1.json`；revision loop 二次重跑时再做归档 |
 | `subagent_reviews.json` | `subagent_review` | Memory / Handoff / Eval 三方评审 |
 | `subagent_outputs.json` | `subagent_review` | Memory / Handoff / Eval 三方详细模块设计 |
 | `framework_adjustment.json` | `framework_adjust` | 总工调整记录 |

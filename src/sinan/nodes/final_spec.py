@@ -142,14 +142,18 @@ def _derive_test_cases(brief: dict) -> list[dict]:
     expected to also flip ``expected_to_pass`` to True (otherwise the runner
     will count a successful run as a "soft pass" — passing against an
     expectation of failure, which contributes nothing to overall_pass).
+
+    The user can override by editing ``harness_design_draft.json`` directly —
+    ``final_spec`` reads test_cases from there only (``brief`` itself does
+    not carry test_cases under any current schema).
     """
     if not brief:
         return []
-    explicit = brief.get("test_cases")
-    if isinstance(explicit, list) and explicit:
-        # User or upstream has already provided test cases — pass through.
-        return explicit
-
+    # Try the draft on disk first — this is where a user-edited test_cases
+    # list would live. ``brief`` (user_brief_form) does not carry test_cases
+    # under the current schema, so checking ``brief.get("test_cases")`` was
+    # dead code. If we ever extend the requirement contract to include
+    # test cases, that's the place to read it.
     success_criteria = brief.get("success_criteria") or []
     cases = []
     for idx, criterion in enumerate(success_criteria, 1):

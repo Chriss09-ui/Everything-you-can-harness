@@ -30,11 +30,15 @@ Routes:
 """
 from __future__ import annotations
 from ..state import HarnessBuilderState
-from ..artifacts import append_progress_log, append_decision_log, load_state_or_file
+from ..artifacts import (
+    append_progress_log, append_decision_log, load_state_or_file,
+    update_run_state,
+)
 
 
 def sinan_approval_node(state: HarnessBuilderState) -> dict:
     """Walk the user through the full design and collect the approval decision."""
+    update_run_state(state["run_id"], "SINAN_APPROVAL")
     draft = load_state_or_file(state, "harness_design_draft")
     gate_flags = state.get("gate_flags", {})
     run_id = state["run_id"]

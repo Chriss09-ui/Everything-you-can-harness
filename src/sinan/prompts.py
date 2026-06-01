@@ -213,8 +213,7 @@ interaction_type = "user_approval"（架构审批）：
       "changes_made": "如果接受，具体做了哪些修改"
     }
   ],
-  "preserved_elements": ["本轮保持不变的核心设计决策"],
-  "round": "当前是第几轮"
+  "preserved_elements": ["本轮保持不变的核心设计决策"]
 }
 
 只输出有效的 JSON。""",

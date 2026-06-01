@@ -15,7 +15,9 @@ Writes:
 
 Artifacts:
     framework_adjustment.json  (versioned)
-    framework_design_v2.json  (versioned)
+    framework_design.json  (versioned — replaces the Round-1 framework as
+    the live version; the Round-1 framework is archived as
+    ``framework_design_v1.json`` by the versioned-write machinery)
 
 Routes:
     → zonggong_integrate  (linear)
@@ -66,12 +68,30 @@ def framework_adjust_node(state: HarnessBuilderState) -> dict:
     adjusted = result.get("adjusted_framework", result)
 
     write_json(state["run_id"], "framework_adjustment.json", result, versioned=True)
-    write_json(state["run_id"], "framework_design_v2.json", adjusted, versioned=True)
+
+    # Write the adjusted framework to the standard live filename
+    # (``framework_design.json``). versioned=True will archive the prior
+    # ``framework_design.json`` (the un-adjusted Round-1 output from
+    # framework_design_node) as ``framework_design_v1.json`` before this write
+    # lands. ``load_state_or_file(state, "framework_design")`` then returns
+    # the adjusted version in both the hot path (state) and the recovery path
+    # (``--from-brief`` / ``--from-design`` when state is empty).
+    #
+    # Previously this wrote ``framework_design_v2.json`` directly, which
+    # bypassed the version registry and left ``framework_design.json`` holding
+    # the un-adjusted Round-1 framework forever — so a resume via
+    # ``--from-brief`` re-fed zonggong_integrate the pre-adjustment design.
+    write_json(state["run_id"], "framework_design.json", adjusted, versioned=True)
 
     state["framework_design"] = adjusted
     state["framework_adjustments"] = result
     state["current_phase"] = "FRAMEWORK_ADJUST"
-    state["artifact_versions"]["framework_design"] = "2.0"
+    # ``artifact_versions`` is an audit-only mirror of the disk version
+    # registry; nothing reads it downstream. Use the live-version field to
+    # match sibling nodes (each write bumps live version by 1; the disk
+    # ``version_registry.json`` is the source of truth if a real count is
+    # needed).
+    state["artifact_versions"]["framework_design"] = "1.0"
     state["artifact_versions"]["framework_adjustment"] = "1.0"
 
     responses = result.get("feedback_responses", [])

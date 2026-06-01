@@ -29,12 +29,20 @@ from ..validation import parse_and_validate_artifact
 
 
 def spec_expansion_node(state: HarnessBuilderState) -> dict:
+    raw_input = state.get("user_raw_input", "")
+    if not raw_input:
+        raise RuntimeError(
+            "spec_expansion requires non-empty user_raw_input. "
+            "Run intake_node first, or check CLI entry — empty input should "
+            "be rejected at the boundary."
+        )
+
     update_run_state(state["run_id"], "SPEC_EXPANSION", started_at=state["started_at"])
     append_progress_log(state["run_id"], "SPEC_EXPANSION", "Starting requirement expansion")
 
     client = get_llm_client()
     system = get_prompt("tuopu")
-    user = f"用户原始输入如下。请生成结构化 Requirement Pack:\n\n{state['user_raw_input']}"
+    user = f"用户原始输入如下。请生成结构化 Requirement Pack:\n\n{raw_input}"
 
     raw = client.generate(system, user)
     rp = parse_and_validate_artifact(raw, "requirement_pack")
