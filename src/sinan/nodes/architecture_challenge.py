@@ -47,14 +47,14 @@ def architecture_challenge_node(state: HarnessBuilderState) -> dict:
     brief = load_state_or_file(state, "user_brief_form")
 
     # ``zonggong_integrate`` embeds ``subagent_outputs``, ``framework_design``
-    # and ``design_evolution`` into the architecture_pack for traceability
+    # and ``design_trace`` into the architecture_pack for traceability
     # — but those ~3x the token cost when fed verbatim to the reviewer LLM
     # and are not what the reviewer is supposed to be challenging. Strip the
     # embedded trace fields before composing the Nishen prompt; the on-disk
     # ``architecture_pack.json`` and the state value are unchanged.
     arch_for_prompt = {
         k: v for k, v in arch.items()
-        if k not in ("subagent_outputs", "framework_design", "design_evolution")
+        if k not in ("subagent_outputs", "framework_design", "design_trace")
     }
 
     user = (

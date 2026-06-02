@@ -1,4 +1,4 @@
-"""Regression tests for design-layer audit fixes (H1 / H3 / H4 / M1).
+"""Regression tests for design-layer audit fixes.
 
 These pin behaviors that were buggy or fragile before the fixes:
 
@@ -20,6 +20,20 @@ These pin behaviors that were buggy or fragile before the fixes:
 
   - M1: ``append_decision_log`` previously wrote the risks list as Python
     repr (``"['a', 'b']"``) into the markdown log. Now renders as bullets.
+
+  - B1: ``framework_adjust`` silently produced an empty
+    ``framework_design.json`` when the LLM returned only
+    ``feedback_responses`` (no ``adjusted_framework``, no top-level
+    nodes/edges). Verify the node now raises on that shape.
+
+  - B3: ``brief_compile`` previously trusted the LLM's
+    ``sign_off_timestamp`` (which the LLM cannot accurately produce).
+    Verify the system now overwrites whatever the LLM returned.
+
+  - B6: ``sinan_approval`` defaulted to ``approve`` on EOFError, silently
+    auto-approving architectures in non-interactive environments. Verify
+    the default is now ``abort`` (latest draft stays on disk; no
+    accidental progression to coding layer).
 """
 import sys
 import uuid
@@ -277,3 +291,170 @@ def test_decision_log_renders_dict_risks(tmp_path):
         assert "- no test suite" in log_text
     finally:
         shutil.rmtree(RUNS_DIR / run_id, ignore_errors=True)
+
+
+# ── B1: framework_adjust must NOT silently write a malformed framework_design ──
+
+
+def test_framework_adjust_rejects_feedback_only_payload(monkeypatch, tmp_path):
+    """If the LLM returns only ``feedback_responses`` with no
+    ``adjusted_framework`` and no top-level nodes/edges, the node must raise
+    instead of writing a framework with empty nodes/edges to disk.
+    """
+    import json
+    from sinan import artifacts as art
+    from sinan.llm import MockLLMClient
+    from sinan.state import make_initial_state
+    from sinan.nodes import framework_adjust as fa
+
+    monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
+
+    MockLLMClient.reset()
+    # Malformed: feedback_responses only, no framework structure.
+    MockLLMClient.register("逐条回应并调整 framework", json.dumps({
+        "feedback_responses": [{"feedback": "x", "response": "accepted"}],
+        "preserved_elements": ["something"],
+    }))
+
+    run_id = f"audit_b1_{uuid.uuid4().hex[:6]}"
+    art.ensure_run_dir(run_id)
+
+    state = make_initial_state(run_id)
+    state["user_brief_form"] = {
+        "use_case_summary": "s", "primary_goal": "g", "stakeholders": [],
+        "scope_inclusions": [], "scope_exclusions": [],
+        "success_criteria": [], "assumptions": [],
+        "known_constraints": [], "persona_qualities": [],
+        "risk_tolerance": "low",
+        "confirmed_requirements": [], "rejected_suggestions": [],
+        "supplementary_notes": "", "priority_order": [],
+        "constraints_final": [],
+    }
+    state["framework_design"] = {
+        "nodes": [{"name": "A"}], "edges": [], "entry_point": "A",
+    }
+    state["subagent_reviews"] = {"memory": {}, "handoff": {}, "eval": {}}
+
+    import pytest
+    with pytest.raises(ValueError, match="framework_adjustment must contain"):
+        fa.framework_adjust_node(state)
+
+    # And nothing must have been written to framework_design.json on disk
+    # (versioned write is only triggered after successful schema validation).
+    disk = art.get_run_dir(run_id) / "framework_design.json"
+    if disk.exists():
+        import json as _json
+        data = _json.loads(disk.read_text())
+        assert data.get("nodes"), (
+            f"framework_design.json was corrupted with empty nodes: {data}"
+        )
+
+
+# ── B3: brief_compile overwrites LLM-supplied sign_off_timestamp ──
+
+
+def test_brief_compile_overwrites_llm_timestamp(monkeypatch, tmp_path):
+    """The LLM cannot produce a correct UTC timestamp; the system must
+    overwrite whatever it returned with the real current time."""
+    import json
+    from datetime import datetime, timezone
+    from sinan import artifacts as art
+    from sinan.llm import MockLLMClient
+    from sinan.state import make_initial_state
+    from sinan.nodes import brief_compile as bc
+
+    monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
+
+    MockLLMClient.reset()
+    # LLM returns a clearly-bogus historical timestamp
+    bogus_ts = "1999-01-01T00:00:00Z"
+    MockLLMClient.register("生成最终 User Brief Form", json.dumps({
+        "confirmed_requirements": [], "rejected_suggestions": [],
+        "supplementary_notes": "", "priority_order": [],
+        "constraints_final": [],
+        "sign_off_timestamp": bogus_ts,
+        "brief_version": "0.0-bogus",
+    }))
+
+    run_id = f"audit_b3_{uuid.uuid4().hex[:6]}"
+    art.ensure_run_dir(run_id)
+
+    state = make_initial_state(run_id)
+    state["requirement_pack"] = {
+        "use_case_summary": "u", "primary_goal": "g",
+        "stakeholders": [], "scope_inclusions": [], "scope_exclusions": [],
+        "success_criteria": [], "assumptions": [], "known_constraints": [],
+        "persona_qualities": [], "risk_tolerance": "low",
+    }
+    state["brief_debate"] = {
+        "tuopu_position": "", "jiewen_challenges": [],
+        "tuopu_responses": [], "aligned_points": [],
+        "remaining_disagreements": [], "user_questions": [],
+    }
+    state["user_brief_answers"] = []
+
+    before = datetime.now(timezone.utc)
+    bc.brief_compile_node(state)
+    after = datetime.now(timezone.utc)
+
+    brief = state["user_brief_form"]
+    # System-stamped timestamp must NOT equal the bogus one
+    assert brief["sign_off_timestamp"] != bogus_ts, (
+        "brief_compile trusted the LLM's hallucinated timestamp instead of "
+        "stamping the real current time"
+    )
+    # brief_version must be the system constant, not the bogus LLM value
+    assert brief["brief_version"] == "1.0", brief["brief_version"]
+    # And the system stamp must be a real ISO-8601 within the window of the call
+    stamped = datetime.fromisoformat(
+        brief["sign_off_timestamp"].replace("Z", "+00:00")
+    )
+    assert before <= stamped <= after, (
+        f"system stamp {stamped} not in [{before}, {after}]"
+    )
+
+
+# ── B6: sinan_approval defaults to abort, not approve, on EOFError ──
+
+
+def test_sinan_approval_eof_defaults_to_abort(monkeypatch, tmp_path):
+    """In non-interactive env (forgotten input mock), the gate must default
+    to ``abort`` so the architecture is NOT silently auto-approved.
+    Previously the default was ``approve`` — a safety-critical foot-gun."""
+    from sinan import artifacts as art
+    from sinan.state import make_initial_state
+    from sinan.nodes import sinan_approval as sa
+
+    monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
+
+    run_id = f"audit_b6_{uuid.uuid4().hex[:6]}"
+    art.ensure_run_dir(run_id)
+
+    state = make_initial_state(run_id)
+    # Minimal harness_design_draft so the section walker doesn't crash.
+    state["harness_design_draft"] = {
+        "primary_goal": "g", "stakeholders": [], "scope": {},
+        "success_criteria": [], "constraints": [],
+        "graph": {"nodes": [], "edges": [], "entry_point": "s"},
+        "phase_sequence": [], "memory_module": {},
+        "handoff_protocol": {}, "eval_placements": {},
+        "approval_gates": [], "failure_recovery": "",
+        "design_rationale": "", "design_evolution": [],
+        "test_cases": [], "risks_identified": [],
+    }
+    state["gate_flags"]["risk_level"] = "low"
+
+    # EOFError on every prompt — simulates piped stdin / forgotten mock.
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda p="": (_ for _ in ()).throw(EOFError()),
+    )
+
+    out = sa.sinan_approval_node(state)
+
+    payload = out.get("resume_payload") or {}
+    assert payload.get("approval") == "abort", (
+        f"EOFError default must be 'abort' (safe), got {payload.get('approval')!r}"
+    )
+    # abort must NOT increment reject count
+    assert out.get("arch_reject_count", 0) == 0

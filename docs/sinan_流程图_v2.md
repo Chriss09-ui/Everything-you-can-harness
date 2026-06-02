@@ -185,7 +185,8 @@
   │     · 内存/交接/评估模块设计      · 风险识别                             │
   │     · 考虑过但被拒绝的备选方案及其原因                                    │
   │     · subagent_outputs（保留 3 份原始产出）                            │
-  │     · design_evolution（设计演进记录）                                  │
+  │     · design_trace（设计演进快照：初始 framework / 子代理评审 /          │
+  │       framework 调整结果，由系统拼接）                                  │
   └────────────────────────────────────┬───────────────────────────────────┘
                                        ▼
   ┌────────────────────────────────────────────────────────────────────────┐
@@ -422,12 +423,12 @@ JSON 解析容错（parse_and_validate_artifact，全流程共用）：
    V2: sinan_approval 拒绝 → arch_revise（生成修复指令）→ framework_design
    - arch_revise_node 生成 arch_revision_brief，包含具体问题 + 修复指令
    - framework_design 收到修复指令，针对性修改
-   - 总工整合时可看到完整的 design_evolution
+   - 总工整合时可看到完整的 design_trace（旧名 design_evolution，已重命名）
 
 5. 产物增强
    - final_spec 生成 harness_design_final.md 时附带「Artifact 版本历史」段（write_json 之后再读取，包含本次写入版本）
    - framework_design 带版本号（v1 / v2+）
-   - architecture_pack 保留完整 design_evolution（初始方案→评审→调整→整合）
+   - architecture_pack 保留完整 design_trace（初始方案→评审→调整→整合）
    - user_brief_answers 增加回答状态（answered/skipped）和时间戳
 
 6. 代码清理

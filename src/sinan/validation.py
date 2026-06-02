@@ -60,9 +60,14 @@ _REQUIRED_FIELDS = {
         "display",
     },
     "user_brief_form": {
+        # NOTE: ``sign_off_timestamp`` and ``brief_version`` are system-set
+        # metadata (the LLM cannot accurately produce the current UTC time, and
+        # the version is a hardcoded constant). brief_compile stamps both
+        # values AFTER validation, so they're intentionally absent from the
+        # required set — requiring them here would force the LLM to invent a
+        # plausible-but-wrong timestamp that the code would then NOT overwrite.
         "confirmed_requirements", "rejected_suggestions",
         "supplementary_notes", "priority_order", "constraints_final",
-        "sign_off_timestamp", "brief_version",
     },
 
     # ── Architecture layer ──
@@ -224,16 +229,25 @@ def validate_artifact(data: dict, artifact_name: str) -> dict:
 
 def _validate_framework_adjustment(data: dict) -> dict:
     """framework_adjustment may come in two shapes: a wrapper dict with
-    ``adjusted_framework`` + ``feedback_responses`` keys, or the framework
-    itself (legacy). Accept either as long as something usable is there."""
-    if "adjusted_framework" in data or "feedback_responses" in data:
+    ``adjusted_framework`` (optionally + ``feedback_responses``), or the
+    framework itself (legacy). Either way the payload MUST carry a usable
+    framework — ``feedback_responses`` alone is insufficient because the
+    downstream node extracts ``adjusted_framework`` (or falls back to the
+    whole dict) and writes it as the next ``framework_design.json``. A
+    feedback-only payload would silently produce a framework with no
+    nodes/edges, corrupting the architecture pipeline downstream.
+    """
+    af = data.get("adjusted_framework")
+    if isinstance(af, dict) and "nodes" in af and "edges" in af:
         return data
-    # legacy shape: must look like a framework_design at minimum
+    # legacy shape: dict itself IS the framework_design
     if "nodes" in data and "edges" in data:
         return data
     raise ValueError(
-        "framework_adjustment must contain either adjusted_framework / "
-        "feedback_responses, or a framework_design-shaped dict with nodes + edges"
+        "framework_adjustment must contain a usable framework: either an "
+        "``adjusted_framework`` dict with nodes + edges, or a top-level "
+        "framework_design-shaped dict with nodes + edges. ``feedback_responses`` "
+        "alone is not sufficient."
     )
 
 

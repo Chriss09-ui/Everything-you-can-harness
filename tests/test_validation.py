@@ -70,7 +70,12 @@ def test_harness_design_draft_missing_graph_fails():
 # ── Architecture layer: framework_adjustment dual-shape acceptance ──
 
 def test_framework_adjustment_accepts_new_shape():
-    data = {"adjusted_framework": {"nodes": []}, "feedback_responses": []}
+    # Wrapped framework must have nodes + edges (validator now enforces
+    # structural completeness on the inner framework too).
+    data = {
+        "adjusted_framework": {"nodes": [], "edges": []},
+        "feedback_responses": [],
+    }
     validate_artifact(data, "framework_adjustment")
 
 
@@ -82,6 +87,44 @@ def test_framework_adjustment_accepts_legacy_framework_shape():
 def test_framework_adjustment_rejects_garbage():
     with pytest.raises(ValueError, match="framework_adjustment must contain"):
         validate_artifact({"status": "mock_response"}, "framework_adjustment")
+
+
+def test_framework_adjustment_rejects_feedback_only():
+    """``feedback_responses`` alone is not enough — the validator must also
+    require a usable framework structure. Previously this slipped through,
+    and framework_adjust then fell back to writing the feedback-only dict
+    as the next ``framework_design.json``, silently corrupting downstream
+    nodes that read ``.get("nodes", [])`` and got empty lists.
+    """
+    data = {"feedback_responses": [{"feedback": "x", "response": "accepted"}]}
+    with pytest.raises(ValueError, match="framework_adjustment must contain"):
+        validate_artifact(data, "framework_adjustment")
+
+
+def test_framework_adjustment_rejects_adjusted_framework_without_edges():
+    """The wrapper case also needs the inner framework to have nodes + edges
+    — otherwise framework_adjust writes a partial framework_design to disk."""
+    data = {"adjusted_framework": {"nodes": []}}  # missing edges
+    with pytest.raises(ValueError, match="framework_adjustment must contain"):
+        validate_artifact(data, "framework_adjustment")
+
+
+# ── user_brief_form schema — sign_off_timestamp & brief_version are system-set ──
+
+
+def test_user_brief_form_passes_without_metadata_fields():
+    """``sign_off_timestamp`` and ``brief_version`` are now stamped by the
+    system (brief_compile) after validation, NOT supplied by the LLM. They
+    must NOT be in the required-field set, otherwise an LLM that correctly
+    omits them gets rejected before the system can fill them in."""
+    data = {
+        "confirmed_requirements": [], "rejected_suggestions": [],
+        "supplementary_notes": "", "priority_order": [],
+        "constraints_final": [],
+        # No sign_off_timestamp, no brief_version — system fills these in.
+    }
+    # Must NOT raise.
+    validate_artifact(data, "user_brief_form")
 
 
 # ── Coding layer: spec contract from planner ──

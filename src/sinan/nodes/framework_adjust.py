@@ -31,7 +31,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from ..validation import parse_and_validate_artifact
+from ..validation import parse_and_validate_artifact, validate_artifact
 
 
 def framework_adjust_node(state: HarnessBuilderState) -> dict:
@@ -64,8 +64,16 @@ def framework_adjust_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     result = parse_and_validate_artifact(raw, "framework_adjustment")
 
-    # 支持两种格式：新版带 feedback_responses，或者旧版直接是调整后的 framework
+    # 支持两种格式：新版带 adjusted_framework 包装，或者旧版直接是调整后的 framework。
+    # Defense-in-depth: the framework_adjustment validator allows either shape,
+    # but the extracted framework MUST also satisfy the framework_design schema
+    # (nodes + edges + entry_point). Without this guard, an LLM that returned
+    # ``{adjusted_framework: {nodes: []}}`` (missing edges/entry_point) or a
+    # legacy ``{nodes: [], edges: []}`` (missing entry_point) would write a
+    # malformed framework_design.json and silently degrade zonggong_integrate /
+    # final_spec downstream.
     adjusted = result.get("adjusted_framework", result)
+    validate_artifact(adjusted, "framework_design")
 
     write_json(state["run_id"], "framework_adjustment.json", result, versioned=True)
 

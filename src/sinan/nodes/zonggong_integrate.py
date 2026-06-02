@@ -88,9 +88,13 @@ Eval Placements:
     arch = parse_and_validate_artifact(raw, "architecture_pack")
 
     # 加入完整上下文便于追溯
+    # NOTE: this field used to be called ``design_evolution``, but
+    # ``harness_design_draft`` carries a different field with the same name
+    # whose shape is a *list* (preserved_elements). Renamed to ``design_trace``
+    # here so the two artifacts don't share a key with divergent shapes.
     arch["subagent_outputs"] = subagent_outputs
     arch["framework_design"] = framework
-    arch["design_evolution"] = {
+    arch["design_trace"] = {
         "initial_framework": load_state_or_file(state, "framework_design"),
         "subagent_reviews": load_state_or_file(state, "subagent_reviews"),
         "framework_adjustments": load_state_or_file(

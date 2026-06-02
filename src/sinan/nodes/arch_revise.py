@@ -47,11 +47,11 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
 
     # Strip the traceability fields zonggong_integrate embedded in the pack.
     # Otherwise the prompt dumps 3x the relevant tokens for ``subagent_outputs``
-    # + ``framework_design`` + ``design_evolution``; the reviser only needs
+    # + ``framework_design`` + ``design_trace``; the reviser only needs
     # to see the actual architecture decisions.
     arch_for_prompt = {
         k: v for k, v in arch.items()
-        if k not in ("subagent_outputs", "framework_design", "design_evolution")
+        if k not in ("subagent_outputs", "framework_design", "design_trace")
     }
 
     user = (

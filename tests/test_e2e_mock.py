@@ -88,9 +88,9 @@ def test_full_pipeline_mock(monkeypatch):
     import json
     arch_pack = json.loads((run_dir / "architecture_pack.json").read_text())
     # architecture_pack must have gone through zonggong_integrate (contains
-    # the embedded ``design_evolution`` trace that node attaches).
-    assert "design_evolution" in arch_pack, (
-        f"architecture_pack missing design_evolution — zonggong_integrate "
+    # the embedded ``design_trace`` snapshot that node attaches).
+    assert "design_trace" in arch_pack, (
+        f"architecture_pack missing design_trace — zonggong_integrate "
         f"did not run or was short-circuited: {list(arch_pack.keys())[:8]}"
     )
 

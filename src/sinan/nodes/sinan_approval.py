@@ -92,10 +92,14 @@ def sinan_approval_node(state: HarnessBuilderState) -> dict:
         try:
             choice = input("  您的选择 > ").strip().lower()
         except EOFError:
-            # Non-interactive env (piped stdin / test harness): default to
-            # approve rather than spin forever. Tests that need reject / abort
-            # behavior monkeypatch input() explicitly.
-            choice = "approve"
+            # Non-interactive env (piped stdin / CI / forgotten test mock):
+            # default to ``abort`` rather than ``approve``. Previously this
+            # silently auto-approved the architecture when no human was at
+            # the prompt — a dangerous default for an audit gate. ``abort``
+            # preserves the latest draft on disk and lets a human pick it up
+            # later via ``--from-design`` if they want. Tests that need a
+            # specific decision monkeypatch input() explicitly.
+            choice = "abort"
         if choice in ("approve", "reject", "request_changes", "abort"):
             break
         print("  无效输入。请输入 approve / reject / request_changes / abort")

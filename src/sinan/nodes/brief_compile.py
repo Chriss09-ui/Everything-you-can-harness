@@ -88,11 +88,14 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
     raw = client.generate(system, user)
     brief = parse_and_validate_artifact(raw, "user_brief_form")
     brief = _enrich_user_brief_form(brief, rp)
-    brief.setdefault(
-        "sign_off_timestamp",
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    # System-authoritative metadata: overwrite any LLM-provided values.
+    # The LLM cannot know the real current time, so any timestamp it produces
+    # is a hallucination — we stamp the real UTC time here. ``brief_version``
+    # is a hardcoded constant the system owns, not a free LLM field.
+    brief["sign_off_timestamp"] = (
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )
-    brief.setdefault("brief_version", "1.0")
+    brief["brief_version"] = "1.0"
 
     write_json(state["run_id"], "user_brief_form.json", brief)
     state["user_brief_form"] = brief

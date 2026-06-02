@@ -136,8 +136,8 @@ interaction_type = "user_approval"（架构审批）：
 - supplementary_notes：用户提供的额外上下文
 - priority_order：{requirement, priority: must_have|should_have|nice_to_have} 的列表
 - constraints_final：最终达成一致的约束
-- sign_off_timestamp：当前 UTC 时间戳
-- brief_version："1.0"
+
+注：sign_off_timestamp 和 brief_version 由系统在写盘时自动盖戳，不要输出这两个字段。
 
 只输出有效的 JSON。""",
 
@@ -173,7 +173,9 @@ interaction_type = "user_approval"（架构审批）：
 - failure_recovery：某个步骤失败时 harness 如何降级处理
 - risks_identified：架构层面的风险（需求表中未捕捉的）
 - alternative_options：考虑过的其他架构方案及其被拒绝的原因
-- design_evolution：framework 的演化记录（初始设计 → 调整 → 最终方案）
+
+注：framework 的演化记录（design_trace）由系统自动从 framework_design /
+subagent_reviews / framework_adjustments 拼接，不要在 LLM 输出里产出。
 
 只输出有效的 JSON。""",
 

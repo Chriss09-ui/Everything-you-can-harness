@@ -226,9 +226,11 @@ class _OpenAIClient(LLMClient):
                     max_tokens=4096,
                 )
                 if not response.choices:
-                    raise _LLMContentEmpty(
-                        f"finish_reason={response.choices[0].finish_reason if response.choices else 'n/a'}"
-                    )
+                    # We're inside the "choices is empty" branch, so there is
+                    # no choices[0] to read a finish_reason from — the SDK
+                    # didn't return any completion at all (rare; usually means
+                    # provider-side error before generation started).
+                    raise _LLMContentEmpty("no choices returned")
                 content = response.choices[0].message.content
                 if content is None:
                     raise _LLMContentNone(
