@@ -133,12 +133,13 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 ```
 approval == "approve"                            → END（final_spec 已运行过）
-approval == "reject" / "request_changes"
-    AND arch_reject_count < 3                    → arch_revise → framework_design
-    AND arch_reject_count >= 3                   → raise RuntimeError("max retry")
+approval == "abort"                              → END（用户显式中止，设计稿留盘）
+approval == "reject" / "request_changes"         → arch_revise → framework_design
 ```
 
-**`arch_reject_count` 在 `sinan_approval` 检测到 reject/request_changes 后立即递增**（先递增再路由），所以最多允许 3 次用户拒绝，第 3 次时路由器抛 `RuntimeError`。
+**没有硬上限的拒绝次数**。用户可以一直 `reject` / `request_changes`，每次都重走辩论循环并重生 `final_spec`，直到他们显式选 `approve`（满意）或 `abort`（放弃改进、当前设计稿留在 `runs/<run_id>/`）。
+
+`arch_reject_count` 仍在 `sinan_approval` 检测到 reject/request_changes 后递增，但只用于在审批界面给用户展示历史拒绝次数 + 在 `arch_revise` 的修订指令里标 `revision_round`——不参与路由判断。
 
 ---
 
@@ -249,7 +250,7 @@ approval == "reject" / "request_changes"
 - **架构层和需求层共享 `HarnessBuilderState`**：加字段时考虑会不会影响需求层。
 - **`framework_design` 可能被多次调用**：因为 reject 会重入它。所以它必须能读 `arch_revision_brief`（如果存在）。同样 `final_spec` 也会被多次调用——每次产出新的 versioned draft + 新的 md。
 - **`sinan_approval` 是同步 `input()`**：跟需求层的 `sinan_debrief` 同问题，未来要 web UI 必须重写。
-- **`arch_reject_count` 在 sinan_approval 节点里就 +=1**（路由前），超过 3 次抛 RuntimeError——不是 2 次，文档同步过。
+- **`arch_reject_count` 在 sinan_approval 节点里就 +=1**（路由前），但**没有硬上限**——用户可以一直 reject，由 `approve` 或 `abort` 显式终止循环。`arch_reject_count` 只用于展示和 `revision_round` 标号。
 - **`final_spec` 不是终结节点**：在 `sinan_approval` 之前运行，产出的 md/json 是**待审稿**。rejected 之后会重生成。approve 才 END。
 - **改完代码记得回 [CLAUDE.md 改动同步原则](../CLAUDE.md#改动同步原则强制) 核对清单。**
 

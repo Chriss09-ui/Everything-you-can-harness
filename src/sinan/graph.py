@@ -121,33 +121,27 @@ def _wrap(fn):
 
 
 def _approval_outcome_router(state: HarnessBuilderState) -> str:
-    """Handle user approval/reject/request_changes outcome.
+    """Handle user approval/abort/reject/request_changes outcome.
 
     ``final_spec`` has already run by the time we get here — it generated
-    the md + json before the user was asked. On approve, go straight to END;
-    on reject/request_changes, go to arch_revise (which re-enters
-    framework_design and will regenerate both the architecture_pack and the
-    draft/md via the debate loop → final_spec again).
+    the md + json before the user was asked. The router has no hard cap on
+    reject rounds: the loop keeps regenerating until the user explicitly
+    stops it. Two stop signals end the loop:
 
-    ``sinan_approval`` increments ``arch_reject_count`` *before* routing, so
-    the counter is already at N by the time we check it here. The docs
-    (architecture_layer.md / NODES.md) say the user gets up to 3 reject
-    rounds — meaning rounds 1, 2, 3 each fire ``arch_revise`` and the 4th
-    reject is the one that raises. Checking ``>= 4`` here makes the 3rd
-    revise actually run; the previous ``>= 3`` check would raise on the 3rd
-    reject before the revise fired, so the user only ever saw 2 rounds.
+      - ``approve`` — user accepts the current draft → END
+      - ``abort``   — user gives up improving and wants to stop the whole
+                      flow (latest draft stays on disk for later use) → END
+
+    ``reject`` / ``request_changes`` route back to ``arch_revise``, which
+    re-enters ``framework_design`` and regenerates the architecture_pack
+    and draft/md via the debate loop → ``final_spec`` again. ``arch_revise``
+    increments ``arch_reject_count`` for display/audit only — it is not a
+    gate.
     """
     payload = state.get("resume_payload") or {}
     choice = payload.get("approval", "")
 
-    reject_count = state.get("arch_reject_count", 0)
-    if choice in ("reject", "request_changes") and reject_count > 3:
-        raise RuntimeError(
-            f"Architecture rejected {reject_count} times. "
-            "Maximum retry limit reached. Please review the design manually."
-        )
-
-    if choice == "approve":
+    if choice in ("approve", "abort"):
         return "END"
     return "arch_revise"
 

@@ -254,38 +254,28 @@
   │ 设计理念 → 审查摘要 → 风险摘要（每节都可暂停），最后收集用户决策。        │
   │                                                                        │
   │ 输入：harness_design_draft（含完整设计）+ gate_flags（守门风险摘要）     │
-  │ 输出：state.resume_payload.approval = approve / reject / request_changes │
+  │ 输出：state.resume_payload.approval                                     │
+  │       = approve / reject / request_changes / abort                     │
   │                                                                        │
   │ 若 reject 或 request_changes：                                          │
-  │   arch_reject_count += 1                                               │
+  │   arch_reject_count += 1（仅用于展示/审计，不再用作循环上限）           │
   └────────────────────────────────────┬───────────────────────────────────┘
                                        │
-                                     ┌──────────┴──────────┐
-                                     │                       │
-                                approve              reject / request_changes
-                                     │                       │
-                                     │                       │
-                              ┌──────▼──────┐         ┌──────┴──────────────┐
-                              │ END          │         │ 拒绝次数 < 3 ?      │
-                              │ (final_spec │         │      │              │
-                              │ 已运行过)   │         │  是  │  否          │
-                              └─────────────┘         │      │              │
-                                                     │ ┌─────▼──────┐     │
-                                                     │ │arch_revise │     │
-                                                     │ │（生成修复   │     │
-                                                     │ │ 指令）      │     │
-                                                     │ └─────┬──────┘     │
-                                                     │       │            │
-                                                     │  回到 ⑥ framework_ │
-                                                     │  design（重走辩论  │
-                                                     │  → 重生 final_spec│
-                                                     │  → 重审）          │
-                                                     │                    │
-                                                     │ ┌──────────────┐  │
-                                                     │ │抛出运行时错误  │  │
-                                                     │ │强制停止流程    │  │
-                                                     │ └──────────────┘  │
-                                                     └────────────────────┘
+                          ┌────────────┼────────────────┐
+                          │            │                │
+                      approve        abort       reject / request_changes
+                          │            │                │
+                          │            │                │
+                   ┌──────▼─────┐ ┌────▼─────────┐ ┌────▼────────────┐
+                   │ END         │ │ END           │ │ arch_revise     │
+                   │ (final_spec│ │ (用户中止；   │ │ （生成修复指令） │
+                   │ 已运行过)   │ │ 设计稿留盘）  │ │                  │
+                   └─────────────┘ └───────────────┘ └────┬────────────┘
+                                                          │
+                                                  回到 ⑥ framework_design
+                                                  （重走辩论 → 重生 final_spec
+                                                  → 重审；用户可一直 reject
+                                                  直到显式 approve 或 abort）
                                        │
                                        ▼
                                   [ 设计层结束 ]
@@ -380,11 +370,12 @@ JSON 解析容错（parse_and_validate_artifact，全流程共用）：
 ★ 用户交互一共 3 处：
   ⓿ 提交原始需求（cli 启动时）
   ❶ 回答辩论问题（sinan_debrief，多轮 input）
-  ❷ 审批架构（sinan_approval，三选一）
+  ❷ 审批架构（sinan_approval，四选一：approve / reject / request_changes / abort）
 
 ★ 死循环保险丝：
-  arch_reject_count ≥ 3 → 强制抛错停止，避免用户和 LLM 互相拉锯停不下来
-  sprint_number > 10（即第 10 个 sprint 完成后）→ 强制抛错停止
+  架构层：拒绝循环没有数量上限，由用户在 sinan_approval 选 approve 或 abort
+          显式终止。abort 不进研发层，设计稿留盘；可后续 --from-design 接力。
+  研发层：sprint_number > 10（即第 10 个 sprint 完成后）→ 强制抛错停止。
 
 ★ 设计层 Agent 角色一览：
   ┌─────────────┬──────────────────┬──────────────────────────────────┐

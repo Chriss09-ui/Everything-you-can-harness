@@ -202,9 +202,9 @@ Routes:
 | Agent | 司南 (用户交互) |
 | Layer | 架构层 |
 | Reads | `harness_design_draft`（含完整设计稿，分章节展示）, `gate_flags`（守门风险摘要） |
-| Writes | `resume_payload`, `arch_reject_count++` on reject, `pending_interrupt=Null`, `current_phase` |
+| Writes | `resume_payload`, `arch_reject_count++` on reject/request_changes（仅用于展示/审计，无硬上限）, `pending_interrupt=Null`, `current_phase` |
 | Artifacts | (无 — interactive console node) |
-| Routes | → END (approve, router 决定) / → arch_revise (reject/request_changes, ≤3 轮，超出 RuntimeError) |
+| Routes | → END (approve 或 abort, router 决定) / → arch_revise (reject/request_changes，无次数上限) |
 
 > **设计意图**：本节点前置的 `final_spec` 已经把完整的 `harness_design_draft.json` +
 > `harness_design_final.md` 落盘。司南在这节点里**分章节把完整设计讲给用户听**

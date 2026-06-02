@@ -318,7 +318,8 @@
 - **`harness/` 是 agent 真正的工作目录**，跟 `runs/<id>/` 下其他 artifact 平级，但语义不同。`harness/` 是产物代码；`runs/<id>/` 下其他文件是过程档案。
 - **并行节点必须用 reducer 合并 state**：见 `session_context: Annotated[dict, _merge_dicts]`。如果新加并行节点写同一字段没加 reducer，LangGraph 会抛 `InvalidUpdateError`。
 - **Session 重置上下文 = 不要从 state 里读跨 session 的数据**。每个 session 开头通过 `read_*` 节点从磁盘 hydrate。state 字段只在单次 graph 调用内可靠。
-- **Sprint 上限是 RuntimeError，不是优雅退出**：跟架构层 `arch_reject_count` 一样。要改用 graceful exit 必须改 router + cli.py 的 try/except。
+- **Sprint 上限是 RuntimeError，不是优雅退出**：第 10 个 sprint 完成后会直接抛错。要改用 graceful exit 必须改 router + cli.py 的 try/except。
+  （注：架构层的 `arch_reject_count` 早期也是同款 RuntimeError 上限，现已改为无上限 + `abort` 显式中止——见 [architecture_layer.md](architecture_layer.md#-_approval_outcome_router-graphpy)。）
 - **`bug_triage` 不重读上下文文件**，直接回 `sanity_check`。原因是 sanity fail 通常是代码问题，不是上下文问题。
 - **mock 模式必须 `register_coding_mock_responses()` 在调 graph 前**。`cli.py` 已经调了，但你写新测试时容易忘。
 - **测试用产物会污染 `runs/`**。`runs/` 已被 `.gitignore` 屏蔽，但本地磁盘会堆积，自己定期 `rm -rf runs/test_*`。

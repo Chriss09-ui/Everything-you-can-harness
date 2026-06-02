@@ -17,7 +17,8 @@ Reads:
 
 Writes:
     state["resume_payload"]      — {approval: "approve"|"reject"|"request_changes", user_intent: str}
-    state["arch_reject_count"]   — incremented on reject
+    state["arch_reject_count"]   — incremented on reject / request_changes
+                                   (audit/display only; no hard cap)
     state["pending_interrupt"]    — reset to None
     state["current_phase"]        — "SINAN_APPROVAL"
 
@@ -25,8 +26,9 @@ Artifacts:
     (none — interactive console node)
 
 Routes:
-    → END           when approval == "approve"  (router handles)
-    → arch_revise   when rejection (≤3 rounds, else RuntimeError)
+    → END           when approval == "approve" or "abort"  (router handles)
+    → arch_revise   when reject / request_changes (no cap — user keeps
+                    revising until they explicitly approve or abort)
 """
 from __future__ import annotations
 from ..state import HarnessBuilderState
@@ -80,9 +82,10 @@ def sinan_approval_node(state: HarnessBuilderState) -> dict:
     print("\n" + "=" * 60)
     print("以上是完整设计。请做出决策：")
     print("  [approve]         架构合理，进研发层")
-    print("  [request_changes] 有修改意见，希望保留大方向（≤3 轮）")
-    print("  [reject]          需要重做（≤3 轮，超出抛 RuntimeError）")
-    print(f"  当前已拒绝次数: {reject_count_before}/3")
+    print("  [request_changes] 有修改意见，希望保留大方向（会回到辩论循环）")
+    print("  [reject]          需要重做（会回到辩论循环）")
+    print("  [abort]           停止整个流程，保留当前设计稿在盘上")
+    print(f"  当前已拒绝次数: {reject_count_before}")
     print("=" * 60)
 
     while True:
@@ -90,12 +93,12 @@ def sinan_approval_node(state: HarnessBuilderState) -> dict:
             choice = input("  您的选择 > ").strip().lower()
         except EOFError:
             # Non-interactive env (piped stdin / test harness): default to
-            # approve rather than spin forever. Tests that need reject behavior
-            # monkeypatch input() explicitly.
+            # approve rather than spin forever. Tests that need reject / abort
+            # behavior monkeypatch input() explicitly.
             choice = "approve"
-        if choice in ("approve", "reject", "request_changes"):
+        if choice in ("approve", "reject", "request_changes", "abort"):
             break
-        print("  无效输入。请输入 approve / reject / request_changes")
+        print("  无效输入。请输入 approve / reject / request_changes / abort")
 
     user_intent = ""
     if choice in ("reject", "request_changes"):

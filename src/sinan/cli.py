@@ -157,6 +157,15 @@ def main():
         print(f"\n--design-only：跳过研发层。设计稿已保存在 runs/{run_id}/")
         return
 
+    # If the user explicitly aborted in sinan_approval, do not proceed to the
+    # coding layer. The latest draft is on disk; user can come back later via
+    # `--from-design <run_id>` if they change their mind.
+    approval = (final_state.get("resume_payload") or {}).get("approval")
+    if approval == "abort":
+        print(f"\n用户中止：跳过研发层。当前设计稿已保存在 runs/{run_id}/")
+        print(f"如需继续：python -m sinan.cli --from-design {run_id}")
+        return
+
     harness_draft = final_state.get("harness_design_draft") or {}
     _run_coding_layer(run_id, harness_draft)
 
@@ -172,13 +181,14 @@ def _run_architecture_then_coding(run_id: str, brief_path: Path, args) -> None:
     # phase — the next node is framework_design, not brief_compile.
     state["current_phase"] = "ARCHITECTURE_RESUME"
 
-    # Carry forward prior reject count so resume doesn't gift the user 3 fresh
-    # rejections on every --from-brief. Counted from decision_log.md entries
-    # written by sinan_approval_node (those are the durable audit trail).
+    # Carry forward prior reject count from decision_log.md for display /
+    # audit. There is no hard cap on reject rounds (router does not gate on
+    # this number), so this is purely informational — it lets the user see
+    # "you've previously rejected N times on this run".
     prior_rejects = _count_arch_rejects(run_id)
     if prior_rejects > 0:
         state["arch_reject_count"] = prior_rejects
-        print(f"恢复架构层，已累计 {prior_rejects}/3 次拒绝。")
+        print(f"恢复架构层，历史上累计拒绝 {prior_rejects} 次。")
 
     append_progress_log(run_id, "SYSTEM",
         f"Resumed at architecture layer from {brief_path.name}")
@@ -204,6 +214,12 @@ def _run_architecture_then_coding(run_id: str, brief_path: Path, args) -> None:
 
     if args.design_only:
         print(f"\n--design-only：跳过研发层。设计稿已保存在 runs/{run_id}/")
+        return
+
+    approval = (final_state.get("resume_payload") or {}).get("approval")
+    if approval == "abort":
+        print(f"\n用户中止：跳过研发层。当前设计稿已保存在 runs/{run_id}/")
+        print(f"如需继续：python -m sinan.cli --from-design {run_id}")
         return
 
     _run_coding_layer(run_id, harness_draft)
