@@ -381,6 +381,24 @@ def register_mock_responses() -> None:
         "recommendation": "pass"
     }, ensure_ascii=False))
 
+    # 守门 (Approval Gate) — triggered by the固定 user-prompt suffix "请评估以上信息"
+    # 必须返回完整四字段 (risk_level / reasoning / key_concerns / checklist)，
+    # 否则 approval_gate 节点会用兜底默认值，得到"高风险但无关注点"的矛盾展示。
+    MockLLMClient.register("请评估以上信息", json.dumps({
+        "risk_level": "medium",
+        "reasoning": "架构整体可行，逆审 challenge_score 较低；但 handoff gaps 与部分失败模式未覆盖，需用户在审批时权衡。",
+        "key_concerns": [
+            "handoff_gaps 中提到的用户输入格式校验缺失",
+            "未覆盖 LLM 调用超时与用户长时间无响应的失败模式"
+        ],
+        "checklist": {
+            "handoff_coverage": False,
+            "failure_recovery_defined": True,
+            "eval_hooks_placed": False,
+            "state_schema_complete": True
+        }
+    }, ensure_ascii=False))
+
     # 辩论协调者 (Brief Debate) — triggered by "请主持辩论"
     MockLLMClient.register("请主持辩论", json.dumps({
         "tuopu_position": "司南系统需要覆盖需求层（扩展+审查）和架构层（设计+反审），以多阶段确保需求质量",

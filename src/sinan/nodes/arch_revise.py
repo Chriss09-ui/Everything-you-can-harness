@@ -27,6 +27,7 @@ from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
+    get_current_artifact,
 )
 from ..validation import parse_llm_json, validate_artifact
 
@@ -41,7 +42,15 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     arch = load_state_or_file(state, "architecture_pack")
     review = load_state_or_file(state, "architecture_review")
     brief = load_state_or_file(state, "user_brief_form")
-    revision_round = state.get("arch_reject_count", 0)
+    # revision_round 取「state 计数」与「磁盘已有 revision_brief 最高 round + 1」
+    # 的较大值。`--from-brief` 入口会通过 _count_arch_rejects 恢复 state 计数；
+    # 但其他重入路径（直接 invoke graph、cli 跳过入口、未来加的中间恢复点）
+    # 可能不恢复 state 计数，导致这里回到 0、与磁盘上已有的 revision_brief 序列
+    # 冲突。取 max(disk_max + 1, state_count) 保证 revision_round 严格大于上轮。
+    revision_round = max(
+        state.get("arch_reject_count", 0),
+        _max_revision_round_on_disk(state["run_id"]) + 1,
+    )
     resume = state.get("resume_payload") or {}
     user_intent = resume.get("user_intent", "")
 
@@ -105,3 +114,21 @@ def arch_revise_node(state: HarnessBuilderState) -> dict:
     finalize_phase(state["run_id"])
 
     return state
+
+
+def _max_revision_round_on_disk(run_id: str) -> int:
+    """Return the highest revision_round seen in any arch_revision_brief on disk.
+
+    Falls back to 0 when no prior brief exists (first reject) or when reading
+    fails (corrupt / partial write). Used as a floor for revision_round so
+    that a re-entry path which doesn't restore ``state["arch_reject_count"]``
+    still produces a revision_round that's strictly greater than any prior
+    round's — keeping the on-disk sequence monotonically increasing.
+    """
+    saved = get_current_artifact(run_id, "arch_revision_brief")
+    if not isinstance(saved, dict):
+        return 0
+    try:
+        return int(saved.get("revision_round") or 0)
+    except (TypeError, ValueError):
+        return 0

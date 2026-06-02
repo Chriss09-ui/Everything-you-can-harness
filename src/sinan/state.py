@@ -54,7 +54,7 @@ class HarnessBuilderState(TypedDict):
 
     # ── Flow Control ──
     pending_interrupt: Optional[
-        Literal["user_brief", "user_approval"]
+        Literal["user_approval"]
     ]
     resume_payload: Optional[dict]
     arch_reject_count: int

@@ -268,3 +268,46 @@ def test_substring_triggers_dont_silently_change_winner():
     assert not problems, (
         f"mock trigger precedence issue: {problems}"
     )
+
+
+def test_every_node_prompt_matches_at_least_one_trigger():
+    """Reverse coverage: for every node that calls the LLM, at least one
+    registered mock trigger must match its (system+user) prompt.
+
+    The forward test catches "orphan trigger" (mock registered for a prompt
+    the production node no longer sends). This catches the opposite drift:
+    a node's prompt has aged away from every registered trigger, so the mock
+    silently falls through to ``_fallback_response`` and either (a) crashes
+    the node with a misleading schema error or (b) produces degraded output
+    that downstream tests accept as truth.
+
+    approval_gate is a recent example: when this node was added, no trigger
+    matched "请评估以上信息" and the mock path returned ``{"status":
+    "mock_response"}``; judgment.get(...) defaults then produced a
+    self-contradictory "high risk + empty key_concerns" display.
+    """
+    MockLLMClient.reset()
+    register_mock_responses()
+
+    client = MockLLMClient()
+    triggers = list(client._responses.keys())
+
+    node_prompts = _build_node_prompts()
+    node_combined = [
+        (label, (system + user).lower())
+        for label, system, user in node_prompts
+    ]
+
+    uncovered = []
+    for label, combined in node_combined:
+        if not any(t.lower() in combined for t in triggers):
+            uncovered.append(label)
+
+    MockLLMClient.reset()
+    register_mock_responses()
+
+    assert not uncovered, (
+        f"node prompt(s) not matched by any mock trigger — mock will fall "
+        f"through to _fallback_response and produce degraded output. "
+        f"Offending nodes: {uncovered}"
+    )

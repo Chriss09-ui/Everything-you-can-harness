@@ -30,6 +30,7 @@ from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
+    get_artifact_versions, get_run_dir,
 )
 from ..validation import parse_and_validate_artifact
 
@@ -87,7 +88,11 @@ Eval Placements:
     raw = client.generate(system, user)
     arch = parse_and_validate_artifact(raw, "architecture_pack")
 
-    # 加入完整上下文便于追溯
+    # 注入完整上下文便于追溯。注意 design_trace.initial_framework 必须
+    # 是真正的 Round-1 框架——framework_adjust 已经把 state["framework_design"]
+    # 覆盖为 adjusted 版本，所以不能直接读 state。Round-1 框架在磁盘上
+    # 由 framework_adjust 的 versioned-write 自动归档为 framework_design_v1.json。
+    #
     # NOTE: this field used to be called ``design_evolution``, but
     # ``harness_design_draft`` carries a different field with the same name
     # whose shape is a *list* (preserved_elements). Renamed to ``design_trace``
@@ -95,7 +100,7 @@ Eval Placements:
     arch["subagent_outputs"] = subagent_outputs
     arch["framework_design"] = framework
     arch["design_trace"] = {
-        "initial_framework": load_state_or_file(state, "framework_design"),
+        "initial_framework": _load_initial_framework(state["run_id"], framework),
         "subagent_reviews": load_state_or_file(state, "subagent_reviews"),
         "framework_adjustments": load_state_or_file(
             state, "framework_adjustments", filename="framework_adjustment.json",
@@ -139,3 +144,24 @@ def _load_subagent_outputs(state: HarnessBuilderState) -> dict:
     run_id = state["run_id"]
     saved = get_current_artifact(run_id, "subagent_outputs")
     return saved or {}
+
+
+def _load_initial_framework(run_id: str, fallback: dict) -> dict:
+    """Return the Round-1 framework (archived as framework_design_v1.json).
+
+    If the archive can't be located (e.g. an older run that pre-dates the
+    versioned-write fix, or an inconsistent registry), fall back to the
+    currently-loaded framework dict so the trace is still populated —
+    degraded traceability is preferable to a hard crash here.
+    """
+    versions = get_artifact_versions(run_id, "framework_design")
+    # versions is newest-first; we want the lowest version number, which is
+    # the Round-1 framework archived the first time framework_adjust overwrote
+    # the live file.
+    for entry in reversed(versions):
+        if entry.get("version") == 1:
+            path = get_run_dir(run_id) / entry["filename"]
+            if path.exists():
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+    return fallback

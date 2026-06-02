@@ -9,7 +9,7 @@ Reads:
 Writes:
     state["user_brief_answers"]  — structured answer records
     state["pending_interrupt"]   — reset to None
-    state["current_phase"]       — "WAIT_USER_BRIEF"
+    state["current_phase"]       — "SINAN_DEBRIEF"
 
 Artifacts:
     (none — interactive console node)

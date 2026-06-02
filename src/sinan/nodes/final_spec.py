@@ -117,7 +117,7 @@ def final_spec_node(state: HarnessBuilderState) -> dict:
     return state
 
 
-def _derive_test_cases(brief: dict) -> list[dict]:
+def _derive_test_cases(brief: dict, state: HarnessBuilderState) -> list[dict]:
     """Derive initial test_cases for the harness from the requirement contract.
 
     Each success_criterion gets a placeholder test case with a stable id and
@@ -143,17 +143,22 @@ def _derive_test_cases(brief: dict) -> list[dict]:
     will count a successful run as a "soft pass" — passing against an
     expectation of failure, which contributes nothing to overall_pass).
 
-    The user can override by editing ``harness_design_draft.json`` directly —
-    ``final_spec`` reads test_cases from there only (``brief`` itself does
-    not carry test_cases under any current schema).
+    **Reject-loop preservation**: final_spec re-runs after every reject, and
+    a naive re-derivation would wipe any test_cases the user filled in
+    between rounds. Before regenerating placeholders, check the on-disk
+    draft for non-placeholder entries (anything where ``is_placeholder`` is
+    not True, or where ``input`` / ``expected_output_keys`` look filled).
+    If any exist, return the existing list verbatim — additions to the
+    brief's success_criteria in a revision round won't show up as new
+    placeholders in that round, but wiping user edits is worse than asking
+    the user to add the new case manually.
     """
+    existing = _load_existing_test_cases(state)
+    if _has_user_edits(existing):
+        return existing
+
     if not brief:
         return []
-    # Try the draft on disk first — this is where a user-edited test_cases
-    # list would live. ``brief`` (user_brief_form) does not carry test_cases
-    # under the current schema, so checking ``brief.get("test_cases")`` was
-    # dead code. If we ever extend the requirement contract to include
-    # test cases, that's the place to read it.
     success_criteria = brief.get("success_criteria") or []
     cases = []
     for idx, criterion in enumerate(success_criteria, 1):
@@ -168,6 +173,45 @@ def _derive_test_cases(brief: dict) -> list[dict]:
             "is_placeholder": True,
         })
     return cases
+
+
+def _load_existing_test_cases(state: HarnessBuilderState) -> list[dict]:
+    """Return the on-disk draft's test_cases if any, else [].
+
+    Explicitly reads from disk (not state): ``harness_design_draft`` survives
+    in state across reject rounds, but the user edits the on-disk file in
+    between. Reading state would return last round's pre-edit draft and let
+    final_spec silently wipe the user's edits — the very bug this guard
+    exists to prevent.
+    """
+    from ..artifacts import get_current_artifact
+    existing = get_current_artifact(state["run_id"], "harness_design_draft")
+    if not isinstance(existing, dict):
+        return []
+    cases = existing.get("test_cases")
+    return cases if isinstance(cases, list) else []
+
+
+def _has_user_edits(cases: list[dict]) -> bool:
+    """True if any case looks like the user filled it in (not a placeholder).
+
+    A case counts as edited if either:
+      - it does not carry ``is_placeholder: True`` (e.g. older draft before
+        we started tagging placeholders explicitly), or
+      - both ``input`` and ``expected_output_keys`` are non-empty — the
+        placeholder rule leaves both blank, so a filled-in pair is a strong
+        edit signal even when ``is_placeholder`` was set incorrectly.
+    """
+    if not cases:
+        return False
+    for c in cases:
+        if not isinstance(c, dict):
+            continue
+        if c.get("is_placeholder") is not True:
+            return True
+        if c.get("input") and c.get("expected_output_keys"):
+            return True
+    return False
 
 
 def _build_ai_draft(
@@ -232,7 +276,7 @@ def _build_ai_draft(
             "exclusions": brief.get("scope_exclusions", []),
         },
         "success_criteria": brief.get("success_criteria", []),
-        "test_cases": _derive_test_cases(brief),
+        "test_cases": _derive_test_cases(brief, state),
         "constraints": brief.get("known_constraints", []),
         "assumptions": brief.get("assumptions", []),
         "stakeholders": brief.get("stakeholders", []),
