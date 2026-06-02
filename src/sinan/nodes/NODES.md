@@ -19,8 +19,8 @@
 | framework_design | `framework_design.json` | subagent_review, framework_adjust |
 | subagent_review | `subagent_reviews.json`, `subagent_outputs.json` | framework_adjust, zonggong_integrate, final_spec |
 | framework_adjust | `framework_adjustment.json` | zonggong_integrate |
-| zonggong_integrate | `architecture_pack.json` | architecture_challenge, approval_gate, final_spec |
-| architecture_challenge | `architecture_review.json` | approval_gate |
+| zonggong_integrate | `architecture_pack.json` (含嵌入 `subagent_outputs` / `framework_design` / `design_trace`) | architecture_challenge, approval_gate, arch_revise, final_spec |
+| architecture_challenge | `architecture_review.json` (versioned) | approval_gate, final_spec |
 | approval_gate | gate_flags (state) | sinan_approval, final_spec |
 | arch_revise | `arch_revision_brief.json` | framework_design |
 | final_spec | `harness_design_draft.json`, `harness_design_final.md` | 研发层 (coding layer) |
@@ -167,7 +167,7 @@ Routes:
 | Layer | 架构层 (四步辩论 Step 4) |
 | Reads | `framework_design`, `subagent_outputs`, `subagent_reviews`, `framework_adjustments`, `arch_revision_brief`, `user_brief_form` (or `requirement_pack` fallback) |
 | Writes | `architecture_pack`, `current_phase`, `artifact_versions` |
-| Artifacts | `architecture_pack.json` |
+| Artifacts | `architecture_pack.json` (**versioned**) — 含嵌入的 `subagent_outputs` / `framework_design` / `design_trace` 模块，下游节点（`architecture_challenge` / `arch_revise`）prompt 时需先 strip 这些嵌入键 |
 | Routes | → `architecture_challenge` (linear) |
 
 > Reads 全部经 `load_state_or_file`（state 优先 + 磁盘 fallback），让 `--from-brief` /
@@ -181,7 +181,7 @@ Routes:
 | Layer | 架构层 |
 | Reads | `architecture_pack` |
 | Writes | `architecture_review`, `current_phase`, `artifact_versions`, `risk_register` |
-| Artifacts | `architecture_review.json` |
+| Artifacts | `architecture_review.json` (**versioned**) |
 | Routes | → `approval_gate` (linear) |
 
 ### 11. approval_gate
@@ -252,7 +252,12 @@ def _approval_outcome_router(state: HarnessBuilderState) -> str:
 
     Condition:
         → END          when approval == "approve"
-        → arch_revise  when rejection (≤3 rounds, else RuntimeError)
+        → END          when approval == "abort"          (用户显式中止，设计稿留盘)
+        → arch_revise  when approval ∈ {"reject", "request_changes"}
+
+    无硬上限——用户可一直 reject/request_changes，每次重走四步辩论
+    并重新生成 design draft + final.md，由用户显式 approve / abort 终止。
+    `arch_reject_count` 仅用于展示和 `revision_round` 标号，不参与路由。
     """
 ```
 

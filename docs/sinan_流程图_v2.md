@@ -84,8 +84,7 @@
   │     · 若存在未解决问题或跳过：询问 proceed/abort                         │
   │                                                                        │
   │   输出：                                                               │
-  │     · state.user_supplements（答案数组）                                │
-  │     · state.user_brief_answers（含回答状态和时间的结构化记录）            │
+  │     · state.user_brief_answers（含每题答案 + 回答状态 + 时间戳）          │
   │                                                                        │
   │   关键变化：不再直接硬编码问题展示，改由 LLM 格式化，                     │
   │             支持多轮追问、优先级排序等智能行为                            │
@@ -364,9 +363,10 @@ LLM 客户端怎么选（llm.py get_llm_client）：
   · 有 OPENAI_API_KEY     → 走 OpenAI（默认 gpt-4o-mini）
   · 都没有                 → 走 MockLLMClient（按关键词命中预置 JSON）
 
-JSON 解析容错（parse_and_validate_artifact，全流程共用）：
-  先剥掉 ```fence```，再 json.loads，失败时返回
-  {error, raw, parse_error}，让流程不至于断掉
+JSON 解析与校验（parse_and_validate_artifact，全流程共用）：
+  先剥掉 ```fence```，再 json.loads，然后按 _REQUIRED_FIELDS 做字段校验；
+  解析失败或字段缺失时**显式抛 ValueError**——由调用方 try/except 或让
+  上层感知，不做静默兜底。
 
 ★ 用户交互一共 3 处：
   ⓿ 提交原始需求（cli 启动时）

@@ -104,7 +104,7 @@ framework_design ─→ subagent_review ─→ framework_adjust ─→ zonggong_
 
 | 文件 | 写入者 | 用途 |
 |---|---|---|
-| `framework_design.json` | `framework_design` (Round 1) → `framework_adjust` (覆盖为调整后的 live 版) | 总工框架 live 版；Round-1 框架在 framework_adjust 写入时自动归档成 `framework_design_v1.json`；revision loop 二次重跑时再做归档 |
+| `framework_design.json` | `framework_design` (Round 1) → `framework_adjust` (覆盖为 adjusted live 版，原版自动归档为 `framework_design_v1.json`) | 总工框架 live 版；revision loop 二次重入时，`framework_design` 节点会再次覆盖 live，旧的 adjusted 版被归档为 `framework_design_v2.json`，依此类推 `_v<round>.json` |
 | `subagent_reviews.json` | `subagent_review` | Memory / Handoff / Eval 三方评审 |
 | `subagent_outputs.json` | `subagent_review` | Memory / Handoff / Eval 三方详细模块设计 |
 | `framework_adjustment.json` | `framework_adjust` | 总工调整记录 |
@@ -154,12 +154,12 @@ approval == "reject" / "request_changes"         → arch_revise → framework_d
 | `subagent_reviews` | dict | `subagent_review` | `framework_adjust`, `zonggong_integrate` |
 | `subagent_outputs` | dict | `subagent_review` | `zonggong_integrate`, `final_spec` |
 | `framework_adjustments` | dict | `framework_adjust` | `zonggong_integrate` |
-| `architecture_pack` | dict | `zonggong_integrate` | `architecture_challenge`, `approval_gate`, `sinan_approval`, `final_spec` |
-| `architecture_review` | dict | `architecture_challenge` | `approval_gate`, `sinan_approval`, `arch_revise` |
+| `architecture_pack` | dict | `zonggong_integrate` | `architecture_challenge`, `approval_gate`, `arch_revise`, `final_spec` |
+| `architecture_review` | dict | `architecture_challenge` | `approval_gate`, `final_spec`, `arch_revise` |
 | `arch_revision_brief` | dict | `arch_revise` | `framework_design`（重入轮次） |
-| `gate_flags` | `GateFlags` TypedDict | `approval_gate` | router |
-| `resume_payload` | dict | `sinan_approval` | router |
-| `arch_reject_count` | int | `sinan_approval` (++) | `_approval_outcome_router` |
+| `gate_flags` | `GateFlags` TypedDict | `approval_gate` | `sinan_approval`（展示用，不参与路由） |
+| `resume_payload` | dict | `sinan_approval` | `_approval_outcome_router` |
+| `arch_reject_count` | int | `sinan_approval` (++) | `arch_revise`（标 `revision_round`）, `sinan_approval`（展示用），不参与路由 |
 | `risk_register` | list[dict] | `architecture_challenge` | 跨层风险跟踪 |
 | `harness_design_draft` | dict | `final_spec` | 研发层 |
 
