@@ -51,7 +51,7 @@
 | 改 prompt 或 mock 输出 | 改 `prompts.py` 或 `mock_responses.py`，**无需**改合约文档（这些不是契约） |
 | 新增 artifact 字段 / 改 artifact 形状 | `src/sinan/validation.py` 的 `_REQUIRED_FIELDS` 对应条目 + 测试（`tests/test_validation.py`） |
 
-> **硬上限 / 计数常量**（如 `sprint_number ≥ 10`、router 数量）任何一处变化必须同步：代码、当前层指南、`docs/sinan_流程图_v2.md` 三处。文档之间自相矛盾是最常见的漂移源。
+> **硬上限 / 计数常量**（如 `sprint_number ≥ 10`、router 数量）任何一处变化必须同步：代码、当前层指南、`docs/sinan_流程图_v3.md` 三处。文档之间自相矛盾是最常见的漂移源。
 >
 > 注：架构层 `arch_reject_count` 不再是硬上限——拒绝循环没有数量限制，由用户在 `sinan_approval` 中选 `approve` 或 `abort` 显式终止。`arch_reject_count` 仍保留作展示/审计用途。
 
