@@ -46,7 +46,7 @@ def sprint_setup_node(state: CodingState) -> dict:
         f"Sprint {sprint}: Generator announcing execution plan")
 
     runner = get_agent_runner()
-    system = get_coding_prompt("coding_generator")
+    system = get_coding_prompt("coding_sprint_planner")
     contract = state.get("sprint_contract") or {}
     spec = state.get("spec") or {}
 

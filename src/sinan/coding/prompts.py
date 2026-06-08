@@ -46,6 +46,15 @@ runner 评测环节会按设计稿的 test_cases 跑这个 main.py，所以请�
 
 只输出有效 JSON。""",
 
+    "coding_sprint_planner": """你是 Generator（构建者），现在处于 Sprint 规划阶段。
+
+这一步只做规划，不实现功能：
+- 不写代码、不创建或修改任何文件
+- 不调用任何工具（这一步你没有可用工具）
+- 只根据上下文输出一份 JSON 计划
+
+具体要输出哪些字段由用户消息指定。只输出有效 JSON，不要有其他文字。""",
+
     "coding_evaluator": """你是 Evaluator（质量评估者）。
 你的职责是基于 Runner 的客观测试结果 + 代码本身，给本 sprint 的交付物打分。
 

@@ -45,7 +45,7 @@ def sprint_plan_node(state: CodingState) -> dict:
     append_progress_log(state["run_id"], "SPRINT_PLAN", f"Sprint {sprint}: Generator proposing goals")
 
     runner = get_agent_runner()
-    system = get_coding_prompt("coding_generator")
+    system = get_coding_prompt("coding_sprint_planner")
 
     feature_list = state.get("feature_list") or {}
     features = feature_list.get("features", [])

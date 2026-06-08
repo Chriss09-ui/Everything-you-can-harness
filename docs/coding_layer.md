@@ -170,7 +170,9 @@
 
 **确定性上限不动**：sprint≤10 / negotiate≤3 / fix≤2 / feature_retry≤2 / sanity_retry≤2
 仍焊死在 `graph.py` 的 router。agent 的 `max_turns`（默认 40）只是单次调用的防失控天花板，
-**不表达循环轮次**。
+**不表达循环轮次**。零工具节点（4 个规划节点）额外把 `max_turns` 收到 8——无工具的结构化输出只需
+~2-3 轮，收紧后即便模型被误导去 deny 空转也能快速失败而非烧满 40；它们也改用规划取向提示词
+（`coding_planner` / `coding_sprint_planner`），不再套会指挥"建 main.py / 跑测试"的 Generator 提示词。
 
 **后端选择 + 离线测试**：`get_agent_runner()` 在 `SINAN_AGENT_BACKEND=real` 或有
 `ANTHROPIC_API_KEY` 时返回 `RealAgentRunner`（需 `claude` CLI 已装并认证——SDK 以子进程拉起它），

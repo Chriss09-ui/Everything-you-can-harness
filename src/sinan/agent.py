@@ -67,6 +67,15 @@ _log = logging.getLogger(__name__)
 # (sprint≤10, fix≤2, ...) stay where they always were: the graph.py routers.
 _DEFAULT_MAX_TURNS = 40
 
+# A no-tool node only emits a structured-output artifact — no reason to run many
+# turns. Empirically a real structured call costs ~2-3 turns (the json_schema
+# handshake takes a couple round-trips on the proxy), so we cap well above that
+# yet far below _DEFAULT_MAX_TURNS: a model that (wrongly) tries tools and gets
+# denied fails fast/cheap (~8 turns) instead of thrashing to 40. Surfaced by a
+# real e2e run where sprint_setup (build prompt + allowed_tools=[]) burned all 40;
+# cap=2 then over-corrected and false-failed sprint_negotiate's legit 3-turn call.
+_ZERO_TOOL_MAX_TURNS = 8
+
 # Conservative Bash denylist. The primary sandbox is cwd + path checks; this
 # only catches obviously destructive / exfiltrating commands that a buggy or
 # misled agent might emit. Matched as substrings against the command string.
@@ -218,6 +227,10 @@ class RealAgentRunner(AgentRunner):
         schema: Optional[dict] = None,
         max_turns: int = _DEFAULT_MAX_TURNS,
     ) -> AgentResult:
+        # A no-tool agent can't loop usefully; cap turns so a misbehaving model
+        # fails fast instead of thrashing against tool denials (see constant).
+        if not allowed_tools:
+            max_turns = min(max_turns, _ZERO_TOOL_MAX_TURNS)
         # graph.invoke() is synchronous and not running inside an event loop,
         # so a per-call asyncio.run is safe. NOTE: if a caller ever switches to
         # graph.ainvoke() (running this inside an event loop), this will raise
