@@ -1,6 +1,6 @@
 """sprint_setup — Generator announces execution plan after negotiation.
 
-Agent: Generator
+Agent: Generator (Claude Agent SDK — pure reasoning, zero tools)
 Loop:  Sprint
 
 Reads:
@@ -23,12 +23,20 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from sinan.validation import parse_and_validate_artifact
-from sinan.llm import get_llm_client
+from sinan.validation import validate_artifact
+from sinan.agent import get_agent_runner
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, get_run_dir,
 )
+
+
+_EXECUTION_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {"execution_order": {"type": "array"}},
+    "required": ["execution_order"],
+    "additionalProperties": True,
+}
 
 
 def sprint_setup_node(state: CodingState) -> dict:
@@ -37,7 +45,7 @@ def sprint_setup_node(state: CodingState) -> dict:
     append_progress_log(state["run_id"], "SPRINT_SETUP",
         f"Sprint {sprint}: Generator announcing execution plan")
 
-    client = get_llm_client()
+    runner = get_agent_runner()
     system = get_coding_prompt("coding_generator")
     contract = state.get("sprint_contract") or {}
     spec = state.get("spec") or {}
@@ -49,8 +57,12 @@ def sprint_setup_node(state: CodingState) -> dict:
         f"输出 JSON: {{\"execution_order\": [...], \"strategy\": \"...\"}}"
     )
 
-    raw = client.generate(system, user)
-    plan = parse_and_validate_artifact(raw, "execution_plan")
+    agent_result = runner.run(
+        system=system, prompt=user, cwd=get_run_dir(state["run_id"]),
+        allowed_tools=[], schema=_EXECUTION_PLAN_SCHEMA,
+    )
+    plan = agent_result.parse("execution_plan")
+    validate_artifact(plan, "execution_plan")
 
     contract["execution_plan"] = plan
     write_json(state["run_id"], "sprint_contract.json", contract, versioned=True)

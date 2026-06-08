@@ -2,3 +2,8 @@ langgraph>=0.2.0
 pydantic>=2.0
 python-dotenv>=1.0
 openai>=1.0
+# Coding-layer LLM nodes run as real tool-using agents via the Claude Agent
+# SDK. Runtime ALSO requires the `claude` Code CLI installed + authenticated
+# (the SDK spawns it as a subprocess) — see README. Tests stay offline via
+# MockAgentRunner and do not need the CLI.
+claude-agent-sdk>=0.2.0

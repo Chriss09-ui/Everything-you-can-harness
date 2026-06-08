@@ -108,10 +108,10 @@
 
 | # | Node | Agent | Loop | 一句话 |
 |---|---|---|---|---|
-| 1 | `planner` | Planner | Sprint (入口) | 把 harness_design 拆成 `spec` + `feature_list` |
-| 2 | `sprint_plan` | Generator | Sprint | 出 sprint 目标提案 |
-| 3 | `sprint_negotiate` | Evaluator | Sprint | 协商 sprint 范围（≤3 轮） |
-| 4 | `sprint_setup` | Generator | Sprint | 加 execution_plan + 重置 fix_loop_count |
+| 1 | `planner` | Planner (Agent SDK, 零工具) | Sprint (入口) | 把 harness_design 拆成 `spec` + `feature_list` |
+| 2 | `sprint_plan` | Generator (Agent SDK, 零工具) | Sprint | 出 sprint 目标提案 |
+| 3 | `sprint_negotiate` | Evaluator (Agent SDK, 零工具) | Sprint | 协商 sprint 范围（≤3 轮） |
+| 4 | `sprint_setup` | Generator (Agent SDK, 零工具) | Sprint | 加 execution_plan + 重置 fix_loop_count |
 | 5 | `session_init` | Initializer | Session (入口) | 协调器：扇出到 init 或直进 setup |
 | 6 | `init_progress` | Initializer | Session (并行) | 写 `claude-progress.txt` |
 | 7 | `init_script` | Initializer | Session (并行) | 写 `init.sh` |
@@ -127,13 +127,55 @@
 | 17 | `sanity_check` | Evaluator | Session | 跑健康检查 |
 | 18 | `bug_triage` | Evaluator | Session | sanity fail 时分诊 / 可能 `git revert` |
 | 19 | `pick_feature` | Generator | Feature (入口) | 按优先级选 feature |
-| 20 | `implement_feature` | Generator | Feature | 写实现文件 |
+| 20 | `implement_feature` | Generator (Agent SDK) | Feature | agent 用工具自主写实现文件到 `harness/` |
 | 21 | `test_feature` | Evaluator | Feature | 跑 feature 级测试 |
 | 22 | `commit_feature` | Generator | Feature | 更新 feature_list + git commit |
-| 23 | `evaluator_qa` | Evaluator | Sprint review | Runner (`main.py` 真跑)+ LLM 综合评分 → `evaluator_grade.json` |
+| 23 | `evaluator_qa` | Evaluator (Agent SDK, 只读) | Sprint review | Runner (`main.py` 真跑)+ 只读 Evaluator agent 审代码综合评分 → `evaluator_grade.json` |
 | 24 | `evaluator_bugs` | Evaluator | Fix | 出 `bug_report.json` |
-| 25 | `generator_fix` | Generator | Fix (≤2 轮) | 修代码 + 自测 |
+| 25 | `generator_fix` | Generator (Agent SDK) | Fix (≤2 轮) | agent 用工具自主修代码 + 自测 |
 | 26 | `sprint_complete` | — (orchestrator) | Sprint (出口) | 出 `sprint_result.json`，判断 END 或下一轮 |
+
+---
+
+## 4.5 LLM 节点的执行模型（Claude Agent SDK）
+
+研发层 **7 个 LLM 节点**（`planner` / `sprint_plan` / `sprint_negotiate` / `sprint_setup` /
+`implement_feature` / `generator_fix` / `evaluator_qa`）不再"单轮补全 + Python 手工
+`write_text`"，而是经 **agent 执行 seam**（[src/sinan/agent.py](../src/sinan/agent.py)
+`get_agent_runner()`）跑一个真 agent：模型用 Claude Code 内置工具自主读写跑测试，迭代到
+`ResultMessage` 结束；节点从 `structured_output` 取产物 → `validate_artifact` 校验。
+
+> 其余节点（`init_*` / `read_*` / `sanity_check` / `bug_triage` / `pick_feature` /
+> `test_feature` / `commit_feature` / `evaluator_bugs` / `sprint_complete`）是确定性逻辑或
+> 真 runner，**不调 LLM、不经 agent seam**。
+
+**每节点的工具集**（`allowed_tools`，收敛到单一职责）：
+
+| 节点 | 工具集 | 说明 |
+|---|---|---|
+| `implement_feature` / `generator_fix` | `Read/Write/Edit/Bash/Glob/Grep` | 写代码 + 自跑测试 |
+| `evaluator_qa` | `Read/Glob/Grep`（只读） | judge 只读不改不跑 → 与 Generator 独立 |
+| `planner` / `sprint_plan` / `sprint_negotiate` / `sprint_setup` | `[]`（零工具） | 纯结构化输出 |
+
+**安全边界**：`cwd=harness/` + `allowed_tools` 经 `permission_mode="dontAsk"` **强制**
+（不在清单里的工具直接 deny——所以只读/零工具节点真的起不了 Bash）+ `setting_sources=[]`
+（不加载司南自己的 CLAUDE.md/settings）+ PreToolUse hook（Write/Edit 写路径复用
+`assert_safe_llm_write_target` 拦穿越/拦 `init.sh`；Bash 命中 denylist 即 deny）。
+
+> **已知边界限制**：对两个开了 Bash 的节点（`implement_feature` / `generator_fix`），这**不是**
+> 硬文件系统沙箱——shell 重定向（`echo > /绝对路径`）仍能写出 `harness/` 之外，因为没有任何
+> 命令字符串过滤是完备的。这两个节点真正的硬隔离边界在 OS 层：**部署时每任务一个容器**。
+> 本地可信运行下接受这一残余风险。（实测：`dontAsk` 挡住只读节点的 Bash；Write 工具逃逸被 hook 挡住；
+> Bash 重定向逃逸挡不住，故留给部署期容器。）
+
+**确定性上限不动**：sprint≤10 / negotiate≤3 / fix≤2 / feature_retry≤2 / sanity_retry≤2
+仍焊死在 `graph.py` 的 router。agent 的 `max_turns`（默认 40）只是单次调用的防失控天花板，
+**不表达循环轮次**。
+
+**后端选择 + 离线测试**：`get_agent_runner()` 在 `SINAN_AGENT_BACKEND=real` 或有
+`ANTHROPIC_API_KEY` 时返回 `RealAgentRunner`（需 `claude` CLI 已装并认证——SDK 以子进程拉起它），
+否则返回 `MockAgentRunner`（离线，不起 CLI，关键词命中预置 structured output + 复刻文件副作用）。
+`tests/conftest.py` 强制 mock 后端，所以 `pytest -q` 全程离线、与本地 `.env` 无关。
 
 ---
 
@@ -243,7 +285,8 @@
 | [src/sinan/coding/prompts.py](../src/sinan/coding/prompts.py) | Planner / Generator / Evaluator / Initializer / Negotiator prompts |
 | [src/sinan/coding/git.py](../src/sinan/coding/git.py) | `git init / add / commit / log / revert` 封装 |
 | [src/sinan/coding/testing.py](../src/sinan/coding/testing.py) | **Runner**：subprocess + 60s timeout 跑 `harness/main.py`，对照 design_draft.test_cases 评分 |
-| [src/sinan/coding/mock_responses.py](../src/sinan/coding/mock_responses.py) | mock 输出 |
+| [src/sinan/agent.py](../src/sinan/agent.py) | **Agent 执行 seam**：`get_agent_runner()` → 起一个带工具的 Claude Agent SDK agent 跑到 `ResultMessage`（`RealAgentRunner`）/ 离线 `MockAgentRunner`。LLM 节点经此自主读写跑测试 |
+| [src/sinan/coding/mock_responses.py](../src/sinan/coding/mock_responses.py) | mock 输出（LLM mock + agent mock，agent mock 含文件副作用） |
 | [src/sinan/coding/parse_json.py](../src/sinan/coding/parse_json.py) | 容错 JSON 解析 |
 
 ---

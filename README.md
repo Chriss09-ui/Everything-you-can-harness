@@ -23,6 +23,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install pytest
 
+# 2b. (Only for a REAL coding-layer run) install + authenticate the Claude Code
+# CLI. The coding layer's LLM nodes run as Claude Agent SDK agents, and the SDK
+# drives the `claude` CLI as a subprocess. Tests don't need this (they run on
+# MockAgentRunner, fully offline).
+#   npm install -g @anthropic-ai/claude-code   # or: brew install claude
+#   claude   # then complete login once
+
 # 3. Run the CLI from the repo root
 PYTHONPATH=src python -m sinan.cli
 
@@ -49,11 +56,21 @@ Repo 用 `src/` 布局，没有 `pyproject.toml`，所以运行模块前需要 `
 
 ## LLM Mode
 
-`src/sinan/llm.py` 自动选择 mock 或真实 provider：
+研发层和设计层用不同的执行机制：
 
-- 未设置 API key → 使用内置 `MockLLMClient`（确定性输出，测试可重复）
+**设计层**（单轮补全，`src/sinan/llm.py` `get_llm_client`）：
+- 未设置 API key → 内置 `MockLLMClient`（确定性输出，测试可重复）
 - 设置 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY` → 调用真实 provider
 - SDK 未安装 → 自动 fallback 到 mock
+
+**研发层**（7 个 LLM 节点跑成真 agent，`src/sinan/agent.py` `get_agent_runner`）：
+- `SINAN_AGENT_BACKEND=real` 或设置了 `ANTHROPIC_API_KEY` → `RealAgentRunner`
+  （经 Claude Agent SDK 拉起 `claude` CLI，agent 用 Read/Write/Edit/Bash 等工具
+  在 `harness/` 内自主读写跑测试）。**需先装好并认证 `claude` CLI**（见 Quick Start 2b）。
+- 否则，或 `SINAN_AGENT_BACKEND=mock` → `MockAgentRunner`（离线，不起 CLI）。
+
+> **测试始终离线**：`tests/conftest.py` 强制清空凭证并钉 `SINAN_AGENT_BACKEND=mock`，
+> 所以 `pytest -q` 不依赖网络或真实 `claude` CLI，与本地 `.env` 无关。
 
 本地实验时复制 `.env.example` 到 `.env` 并填入 key。
 
@@ -65,7 +82,8 @@ src/sinan/
 ├── graph.py                 # 需求层 + 架构层 LangGraph 装配
 ├── state.py                 # HarnessBuilderState schema
 ├── artifacts.py             # run 目录、日志、版本化 artifact 写入
-├── llm.py                   # Mock / OpenAI / Anthropic 适配器
+├── llm.py                   # 设计层单轮补全：Mock / OpenAI / Anthropic 适配器
+├── agent.py                 # 研发层 agent 执行 seam：Claude Agent SDK / MockAgentRunner
 ├── mock_responses.py        # 设计层确定性 mock 输出
 ├── prompts.py               # 设计层角色 prompt
 ├── nodes/                   # 需求层 + 架构层 node 实现

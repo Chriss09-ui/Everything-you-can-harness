@@ -1,6 +1,6 @@
 """sprint_plan — Generator proposes sprint goals with priority and dependencies.
 
-Agent: Generator
+Agent: Generator (Claude Agent SDK — pure reasoning, zero tools)
 Loop:  Sprint
 
 Reads:
@@ -23,12 +23,20 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from sinan.validation import parse_and_validate_artifact
-from sinan.llm import get_llm_client
+from sinan.validation import validate_artifact
+from sinan.agent import get_agent_runner
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, get_run_dir,
 )
+
+
+_SPRINT_CONTRACT_SCHEMA = {
+    "type": "object",
+    "properties": {"sprint_goals": {"type": "array", "items": {"type": "object"}}},
+    "required": ["sprint_goals"],
+    "additionalProperties": True,
+}
 
 
 def sprint_plan_node(state: CodingState) -> dict:
@@ -36,7 +44,7 @@ def sprint_plan_node(state: CodingState) -> dict:
     update_run_state(state["run_id"], "SPRINT_PLAN")
     append_progress_log(state["run_id"], "SPRINT_PLAN", f"Sprint {sprint}: Generator proposing goals")
 
-    client = get_llm_client()
+    runner = get_agent_runner()
     system = get_coding_prompt("coding_generator")
 
     feature_list = state.get("feature_list") or {}
@@ -53,8 +61,12 @@ def sprint_plan_node(state: CodingState) -> dict:
     user_parts.append("\n输出 JSON：{\"sprint_goals\": [{\"feature_id\": ..., \"acceptance_criteria\": [...]}], \"priority_order\": [...], \"estimated_sessions\": N}")
     user = "\n".join(user_parts)
 
-    raw = client.generate(system, user)
-    contract_draft = parse_and_validate_artifact(raw, "sprint_contract")
+    agent_result = runner.run(
+        system=system, prompt=user, cwd=get_run_dir(state["run_id"]),
+        allowed_tools=[], schema=_SPRINT_CONTRACT_SCHEMA,
+    )
+    contract_draft = agent_result.parse("sprint_contract")
+    validate_artifact(contract_draft, "sprint_contract")
 
     existing = state.get("sprint_contract") or {}
     if existing.get("agreed"):

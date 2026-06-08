@@ -74,7 +74,7 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Planner |
+| Agent | Planner（Claude Agent SDK，零工具，纯结构化输出） |
 | Loop | Sprint (入口) |
 | Reads | `harness_design_draft` (state, 优先) / `runs/<run_id>/harness_design_draft.json` (磁盘 fallback) |
 | Writes | `spec`, `feature_list`, `current_phase` |
@@ -88,7 +88,7 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Generator |
+| Agent | Generator（Claude Agent SDK，零工具，纯结构化输出） |
 | Loop | Sprint |
 | Reads | `feature_list`, `bug_report` |
 | Writes | `sprint_contract`, `current_phase` |
@@ -99,7 +99,7 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Evaluator |
+| Agent | Evaluator（Claude Agent SDK，零工具，纯结构化输出） |
 | Loop | Sprint (协商 ≤3 轮) |
 | Reads | `sprint_contract`, `negotiate_round` |
 | Writes | `sprint_contract`, `negotiate_round` |
@@ -110,7 +110,7 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Generator |
+| Agent | Generator（Claude Agent SDK，零工具，纯结构化输出） |
 | Loop | Sprint |
 | Reads | `sprint_contract`, `spec` |
 | Writes | `sprint_contract` (加 execution_plan), `fix_loop_count=0` |
@@ -218,14 +218,20 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Generator |
+| Agent | Generator（Claude Agent SDK，自主工具调用） |
 | Loop | Feature |
 | Reads | `current_feature_id`, `feature_list`, `spec` |
 | Writes | `implement_result`, `feature_retry_count++`, `session_progress_count++` |
-| Artifacts | 实现文件写入 `harness/` |
+| Artifacts | Generator agent 用 Read/Write/Edit/Bash/Glob/Grep **自己**把实现文件写进 `harness/`（不再由 Python `write_text`） |
 | Routes | → `test_feature` (linear) |
 
-> **交接点：** 产出的文件是 `test_feature` 的测试对象。
+> **交接点：** agent 写进 `harness/` 的文件是 `test_feature` 的测试对象。
+> **执行模型：** 节点起一个 `cwd=harness/`、工具集收敛为 Generator 工具的 SDK agent，
+> agent 自主迭代到产出符合 `implement_result` schema 的最终 JSON；节点取 `structured_output`
+> 后照常 `validate_artifact`。安全边界由 agent seam 的 `cwd` + `allowed_tools`（经
+> `permission_mode="dontAsk"` 强制：不在清单的工具直接 deny）+ PreToolUse hook
+> （复用 `assert_safe_llm_write_target`）保证。**已知限制**：本节点开了 Bash，故 hook 拦不住
+> shell 重定向逃逸——硬隔离留给部署期容器，本地可信运行接受残余风险（详见 `agent.py` 模块 docstring）。
 
 ### 21. test_feature
 
@@ -257,18 +263,18 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Evaluator |
+| Agent | Evaluator（Claude Agent SDK，**只读**工具：Read/Glob/Grep） |
 | Loop | Sprint (review) |
-| Reads | `feature_list`, `harness_design_draft.test_cases`（通过 testing.run_qa_eval 读） |
+| Reads | `feature_list`, `harness_design_draft.test_cases`（通过 testing.run_qa_eval 读）, `harness/` 源码（Evaluator agent 直接读） |
 | Writes | `evaluator_grade` |
 | Artifacts | `evaluator_grade.json` (versioned) |
 | Routes | → `sprint_complete` (pass) / → `evaluator_bugs` (fail) |
 
-> **评测模型：Runner + LLM 双轨**。
+> **评测模型：Runner + Evaluator agent 双轨**。
 > - `testing.run_qa_eval` 用 `subprocess + timeout(60s)` 真跑 `harness/main.py`，对照每条 test_case 的 `expected_output_keys` 检查 stdout JSON。结果是 ground truth。
-> - 如果 runner 看到 expected_to_pass=True 的用例真的失败了，**强制覆盖** LLM 的 overall_pass=False。
-> - 如果 runner 跑不起来（没 main.py、没 test_cases、超时等），返回中性 `overall_pass=True + runner_results=[]`，**让 LLM 接管评分**，不会触发无限 fix 循环。
-> - Evaluator LLM 拿 runner 报告 + 代码软指标（可读性、模块化、错误处理等）综合打 4 维分。
+> - 如果 runner 看到 expected_to_pass=True 的用例真的失败了，**强制覆盖** Evaluator agent 的 overall_pass=False。
+> - 如果 runner 跑不起来（没 main.py、没 test_cases、超时等），返回中性 `overall_pass=True + runner_results=[]`，**让 Evaluator agent 接管评分**，不会触发无限 fix 循环。
+> - Evaluator agent 用只读工具（Read/Glob/Grep）真审阅 `harness/` 代码 + runner 报告，综合打 4 维软指标分（可读性、模块化、错误处理等）。**只读 = 它判但不改，与写代码的 Generator 保持独立**。
 >
 > **交接点：** `evaluator_grade.json` 是 `evaluator_bugs` 和 `generator_fix` 的输入契约。
 
@@ -289,12 +295,16 @@ Routes:
 
 | 属性 | 值 |
 |------|------|
-| Agent | Generator |
+| Agent | Generator（Claude Agent SDK，自主工具调用） |
 | Loop | Fix (≤2 轮) |
 | Reads | `bug_report` |
 | Writes | `fix_result`, `fix_loop_count++` |
-| Artifacts | 修复文件写入 `harness/` |
+| Artifacts | Generator agent 用 Read/Write/Edit/Bash/Glob/Grep **自己**把修复文件写进 `harness/` 并自跑测试（不再由 Python `write_text`） |
 | Routes | → `evaluator_qa` (自测通过或 fix≥2) / → `generator_fix` (自测失败) |
+
+> **执行模型：** 节点起一个 `cwd=harness/` 的 Generator SDK agent 自主修复+自测，产出符合
+> `fix_result` schema 的最终 JSON；节点取 `structured_output` 后 `validate_artifact`。
+> 另：节点仍跑确定性 `run_sanity_check`（只查 src/+main.py 在不在），并保留 `verified` 缺省回退规则。
 
 ### 27. sprint_complete
 

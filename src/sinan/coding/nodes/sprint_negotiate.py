@@ -1,6 +1,6 @@
 """sprint_negotiate — Evaluator reviews sprint proposal, negotiate until agreement.
 
-Agent: Evaluator
+Agent: Evaluator (Claude Agent SDK — pure reasoning, zero tools)
 Loop:  Sprint (negotiation, ≤3 rounds)
 
 Reads:
@@ -23,12 +23,23 @@ from __future__ import annotations
 import json
 from ..state import CodingState
 from ..prompts import get_coding_prompt
-from sinan.validation import parse_and_validate_artifact
-from sinan.llm import get_llm_client
+from sinan.validation import validate_artifact
+from sinan.agent import get_agent_runner
 from sinan.artifacts import (
     write_json, update_run_state, append_progress_log,
-    append_decision_log, finalize_phase,
+    append_decision_log, finalize_phase, get_run_dir,
 )
+
+
+_SPRINT_NEGOTIATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "agreed": {"type": "boolean"},
+        "summary": {"type": "string"},
+    },
+    "required": ["agreed", "summary"],
+    "additionalProperties": True,
+}
 
 
 def sprint_negotiate_node(state: CodingState) -> dict:
@@ -37,13 +48,17 @@ def sprint_negotiate_node(state: CodingState) -> dict:
     append_progress_log(state["run_id"], "SPRINT_NEGOTIATE",
         f"Evaluator reviewing sprint proposal (round {round_num})")
 
-    client = get_llm_client()
+    runner = get_agent_runner()
     system = get_coding_prompt("coding_negotiator")
     contract = state.get("sprint_contract") or {}
 
     user = f"请审核以下 Sprint 目标提案：\n\n{json.dumps(contract, indent=2, ensure_ascii=False)}"
-    raw = client.generate(system, user)
-    review = parse_and_validate_artifact(raw, "sprint_negotiation")
+    agent_result = runner.run(
+        system=system, prompt=user, cwd=get_run_dir(state["run_id"]),
+        allowed_tools=[], schema=_SPRINT_NEGOTIATION_SCHEMA,
+    )
+    review = agent_result.parse("sprint_negotiation")
+    validate_artifact(review, "sprint_negotiation")
 
     agreed = review.get("agreed", False)
     contract["agreed"] = agreed

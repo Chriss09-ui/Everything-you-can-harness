@@ -1,6 +1,6 @@
 ```
 ═══════════════════════════════════════════════════════════════════════════════
-                  司南 Harness Builder — V2 完整流程图（中文详注版）
+                  司南 Harness Builder — V3 完整流程图（中文详注版）
 ═══════════════════════════════════════════════════════════════════════════════
 
   ┌────── CLI (cli.py main) ──────┐
@@ -348,6 +348,52 @@
 
 
 ╔═══════════════════════════════════════════════════════════════════════════╗
+║                【叶子工作模式：tool-use agent loop】                         ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+研发层 7 个 LLM 节点不再"单轮补全 + Python 手工 write_text"，而是经 agent 执行
+seam（src/sinan/agent.py: get_agent_runner → RealAgentRunner 包
+claude_agent_sdk.query()）跑一个真 agent：用 Claude Code 内置工具自主读写跑测试，
+迭代到 ResultMessage 结束；节点从 structured_output 取产物 → validate_artifact。
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  options = ClaudeAgentOptions(                                       │
+  │     system_prompt=<角色>, cwd=harness/, allowed_tools=<按节点收敛>,  │
+  │     permission_mode="dontAsk", setting_sources=[],                  │
+  │     max_turns=40, hooks={PreToolUse:[safe_hook]},                   │
+  │     output_format={json_schema: <该 artifact 的 schema>})           │
+  │  async for msg in query(prompt, options): ... 直到 ResultMessage    │
+  │  → AgentResult(structured_output, total_cost_usd, num_turns)        │
+  └─────────────────────────────────────────────────────────────────────┘
+
+每节点的工具集（allowed_tools，收敛到单一职责）：
+  implement_feature / generator_fix  : Read/Write/Edit/Bash/Glob/Grep（写代码+跑测试）
+  evaluator_qa                       : Read/Glob/Grep（只读，judge 不改不跑 → 独立性）
+  planner/sprint_plan/negotiate/setup: []（零工具，纯结构化输出）
+
+安全边界（agent.py:_make_safe_hook）：
+  cwd=harness/  +  allowed_tools 经 permission_mode="dontAsk" 强制（不在清单的工具直接 deny
+                   → 只读/零工具节点真起不了 Bash）  +  setting_sources=[]（不读司南自己的 CLAUDE.md）
+  +  PreToolUse hook：Write/Edit 写路径经 assert_safe_llm_write_target（拦穿越、拦 init.sh）、
+     Bash 命中 denylist（拦 rm -rf / sudo / dd 等）即 deny。
+
+  ⚠ 已知限制：开了 Bash 的两个节点（implement_feature / generator_fix）这不是硬沙箱——
+     shell 重定向（echo > /绝对路径）仍能逃逸，命令字符串过滤不完备。真正的硬隔离边界在 OS 层：
+     部署时每任务一个容器。本地可信运行接受残余风险。
+     （实测：dontAsk 挡只读节点的 Bash；Write 逃逸被 hook 挡；Bash 重定向逃逸挡不住。）
+
+确定性上限不动：sprint≤10 / negotiate≤3 / fix≤2 / feature_retry≤2 / sanity_retry≤2
+  仍焊死在 graph.py 的 router（整数比较）。max_turns 只是单次 agent 的防失控天花板，
+  不表达循环轮次。
+
+后端选择（agent.py:get_agent_runner，对齐 llm.py 的"有 key 才走真"）：
+  · SINAN_AGENT_BACKEND=real，或有 ANTHROPIC_API_KEY → RealAgentRunner
+      （部署依赖：claude Code CLI 已安装并认证——SDK 以子进程拉起它）
+  · 否则 / SINAN_AGENT_BACKEND=mock → MockAgentRunner（离线，不起 CLI，关键词命中
+      预置 structured output + 复刻文件副作用；pytest 全程走这条，保证离线确定性）
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
 ║                       【横切关注点 Cross-cutting】                          ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
@@ -358,10 +404,12 @@
   ④ 写当步产物 json/yaml/md
   ⑤ 把当前阶段标 completed
 
-LLM 客户端怎么选（llm.py get_llm_client）：
-  · 有 ANTHROPIC_API_KEY  → 走 Anthropic（claude-sonnet-4）
-  · 有 OPENAI_API_KEY     → 走 OpenAI（默认 gpt-4o-mini）
-  · 都没有                 → 走 MockLLMClient（按关键词命中预置 JSON）
+LLM 后端怎么选：
+  · 设计层（单轮补全，llm.py get_llm_client）：
+      有 ANTHROPIC_API_KEY → Anthropic；有 OPENAI_API_KEY → OpenAI；都没有 → MockLLMClient
+  · 研发层 7 个 LLM 节点（真 agent，agent.py get_agent_runner）：
+      SINAN_AGENT_BACKEND=real 或有 ANTHROPIC_API_KEY → RealAgentRunner（需 claude CLI）；
+      否则 → MockAgentRunner（离线）。详见上面【叶子工作模式】。
 
 JSON 解析与校验（parse_and_validate_artifact，全流程共用）：
   先剥掉 ```fence```，再 json.loads，然后按 _REQUIRED_FIELDS 做字段校验；
@@ -370,7 +418,12 @@ JSON 解析与校验（parse_and_validate_artifact，全流程共用）：
 
 ★ 用户交互一共 3 处：
   ⓿ 提交原始需求（cli 启动时）
-  ❶ 回答辩论问题（sinan_debrief，多轮 input）
+  ❶ 回答辩论问题（sinan_debrief，多轮 input）——辩论问答结束后再问 2 个
+     "对研发层 agent 工作方式的用户偏好"：
+       · 每 feature agent 工作轮次预算（默认 20）
+       · 允许 agent 使用的工具白名单（默认全开）
+     这些是需求层收集的用户决策，写入 `user_brief_form.json`，
+     经架构层透传到 `harness_design_draft.json`，由研发层 `planner` 读取执行。
   ❷ 审批架构（sinan_approval，四选一：approve / reject / request_changes / abort）
 
 ★ 死循环保险丝：

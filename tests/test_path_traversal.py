@@ -1,22 +1,24 @@
 """Regression tests for path traversal blocking (P0 security fix).
 
-Before this fix, ``implement_feature_node`` and ``generator_fix_node``
-joined LLM-returned ``files[].path`` directly onto ``harness_dir`` and
-wrote whatever the LLM returned. A path like ``../../etc/passwd`` or
-``../../../tmp/evil`` would resolve outside the harness sandbox and
-``pathlib`` would happily write it.
+``implement_feature_node`` and ``generator_fix_node`` now run as Claude Agent
+SDK agents — they no longer join paths onto ``harness_dir`` in Python. The
+``resolve() + is_relative_to()`` guard (``assert_safe_llm_write_target``) lives
+in the agent seam instead: MockAgentRunner routes its file side-effects through
+it, and RealAgentRunner enforces it via a PreToolUse hook. A path like
+``../../etc/passwd`` or an absolute ``/tmp/evil`` must still be blocked from
+escaping the harness sandbox.
 
-These tests pin the resolve() + is_relative_to() guard so a future
-refactor that drops it will fail at least one of these three cases:
+These tests pin that guard so a future refactor that drops it will fail at least
+one of these cases:
   1. "../" escape in the path
   2. absolute path (e.g. "/tmp/x") attempting to escape
-  3. benign sibling files still get written (we don't over-block)
+  3. ``init.sh`` overwrite (acute: session_setup runs it via ``bash init.sh``)
+  4. benign sibling files still get written (we don't over-block)
 """
-import json
 import sys
 from pathlib import Path
 
-from sinan.llm import MockLLMClient
+from sinan.agent import MockAgentRunner
 from sinan.artifacts import ensure_run_dir, get_run_dir
 from sinan.coding.state import make_coding_state
 from sinan.coding.nodes.implement_feature import implement_feature_node
@@ -33,13 +35,10 @@ _DRAFT = {
 }
 
 
-def _setup(tmp_path, monkeypatch, mock_payload, trigger_substring):
-    """Point RUNS_DIR at tmp, register one mock response, return a fresh state."""
+def _scaffold(tmp_path, monkeypatch):
+    """Point RUNS_DIR at tmp, build a harness dir + fresh state."""
     from sinan import artifacts as art
     monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
-
-    MockLLMClient.reset()
-    MockLLMClient.register(trigger_substring, json.dumps(mock_payload, ensure_ascii=False))
 
     run_id = "path_trav_test"
     ensure_run_dir(run_id)
@@ -54,16 +53,33 @@ def _setup(tmp_path, monkeypatch, mock_payload, trigger_substring):
     return run_id, state
 
 
+def _setup_agent(tmp_path, monkeypatch, output, files, trigger_substring):
+    """Agent-node variant: register a MockAgentRunner response.
+
+    ``files`` are the side-effects the mock agent's Write tool "makes" — routed
+    through assert_safe_llm_write_target, so a malicious path is blocked exactly
+    as a real agent's PreToolUse hook would block it. ``output`` is the agent's
+    structured report (must satisfy the implement_result schema).
+    """
+    run_id, state = _scaffold(tmp_path, monkeypatch)
+    MockAgentRunner.reset()
+    MockAgentRunner.register(trigger_substring, output, files=files)
+    return run_id, state
+
+
 def test_implement_feature_blocks_dotdot_escape(tmp_path, monkeypatch):
     """../../etc/x must NOT be written; legit sibling file must still be."""
-    run_id, state = _setup(tmp_path, monkeypatch, {
-        "status": "implemented",
-        "files": [
-            {"path": "../../etc/evil.txt", "content": "PWNED", "action": "create"},
-            {"path": "src/legit.py", "content": "ok = 1\n", "action": "create"},
+    run_id, state = _setup_agent(tmp_path, monkeypatch,
+        output={
+            "status": "implemented",
+            "files": [{"path": "src/legit.py", "action": "create"}],
+            "summary": "mixed payload",
+        },
+        files=[
+            {"path": "../../etc/evil.txt", "content": "PWNED"},
+            {"path": "src/legit.py", "content": "ok = 1\n"},
         ],
-        "summary": "mixed payload",
-    }, "请实现以下功能")
+        trigger_substring="请在当前项目目录中实现以下功能")
 
     implement_feature_node(state)
 
@@ -81,13 +97,10 @@ def test_implement_feature_blocks_absolute_path(tmp_path, monkeypatch):
     and the assertion will catch it."""
     abs_target = tmp_path / "abspath_poison.txt"
     assert not abs_target.exists(), "precondition: target should not exist"
-    run_id, state = _setup(tmp_path, monkeypatch, {
-        "status": "implemented",
-        "files": [
-            {"path": str(abs_target), "content": "PWNED", "action": "create"},
-        ],
-        "summary": "absolute path attempt",
-    }, "请实现以下功能")
+    run_id, state = _setup_agent(tmp_path, monkeypatch,
+        output={"status": "implemented", "files": [], "summary": "absolute path attempt"},
+        files=[{"path": str(abs_target), "content": "PWNED"}],
+        trigger_substring="请在当前项目目录中实现以下功能")
 
     implement_feature_node(state)
 
@@ -98,16 +111,18 @@ def test_implement_feature_blocks_absolute_path(tmp_path, monkeypatch):
 
 def test_generator_fix_blocks_path_traversal(tmp_path, monkeypatch):
     """Same guard on the fix path. Legit patches must still go through."""
-    run_id, state = _setup(tmp_path, monkeypatch, {
-        "status": "fixed",
-        "files": [
-            {"path": "../../../escape.txt", "content": "PWNED", "action": "modify"},
-            {"path": "src/patched.py", "content": "fixed = True\n", "action": "modify"},
+    run_id, state = _setup_agent(tmp_path, monkeypatch,
+        output={
+            "status": "fixed",
+            "files": [{"path": "src/patched.py", "action": "modify"}],
+            "verified": True,
+            "summary": "mixed patch",
+        },
+        files=[
+            {"path": "../../../escape.txt", "content": "PWNED"},
+            {"path": "src/patched.py", "content": "fixed = True\n"},
         ],
-        "verified": True,
-        "self_test_passed": True,
-        "summary": "mixed patch",
-    }, "Bug 修复")
+        trigger_substring="请在当前项目目录中修复")
 
     state["bug_report"] = {"bugs": [{"description": "b1", "severity": "major"}]}
     state["fix_loop_count"] = 0
@@ -128,14 +143,17 @@ def test_implement_feature_blocks_init_sh_overwrite(tmp_path, monkeypatch):
     must block this overwrite even though the path trivially resolves inside
     the harness dir.
     """
-    run_id, state = _setup(tmp_path, monkeypatch, {
-        "status": "implemented",
-        "files": [
-            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n", "action": "modify"},
-            {"path": "src/legit.py", "content": "ok = 1\n", "action": "create"},
+    run_id, state = _setup_agent(tmp_path, monkeypatch,
+        output={
+            "status": "implemented",
+            "files": [{"path": "src/legit.py", "action": "create"}],
+            "summary": "init.sh hijack attempt",
+        },
+        files=[
+            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n"},
+            {"path": "src/legit.py", "content": "ok = 1\n"},
         ],
-        "summary": "init.sh hijack attempt",
-    }, "请实现以下功能")
+        trigger_substring="请在当前项目目录中实现以下功能")
 
     init_sh = get_run_dir(run_id) / "harness" / "init.sh"
     init_sh.write_text("echo original\n")
@@ -152,16 +170,18 @@ def test_implement_feature_blocks_init_sh_overwrite(tmp_path, monkeypatch):
 
 def test_generator_fix_blocks_init_sh_overwrite(tmp_path, monkeypatch):
     """Mirror of the implement_feature test, on the bug-fix path."""
-    run_id, state = _setup(tmp_path, monkeypatch, {
-        "status": "fixed",
-        "files": [
-            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n", "action": "modify"},
-            {"path": "src/patched.py", "content": "fixed = True\n", "action": "modify"},
+    run_id, state = _setup_agent(tmp_path, monkeypatch,
+        output={
+            "status": "fixed",
+            "files": [{"path": "src/patched.py", "action": "modify"}],
+            "verified": True,
+            "summary": "init.sh hijack via fix",
+        },
+        files=[
+            {"path": "init.sh", "content": "#!/bin/bash\necho PWNED\n"},
+            {"path": "src/patched.py", "content": "fixed = True\n"},
         ],
-        "verified": True,
-        "self_test_passed": True,
-        "summary": "init.sh hijack via fix",
-    }, "Bug 修复")
+        trigger_substring="请在当前项目目录中修复")
 
     state["bug_report"] = {"bugs": [{"description": "b1", "severity": "major"}]}
     state["fix_loop_count"] = 0

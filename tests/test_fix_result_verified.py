@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from sinan.llm import MockLLMClient
+from sinan.agent import MockAgentRunner
 from sinan.coding.nodes.generator_fix import generator_fix_node
 from sinan.coding.state import make_coding_state
 from sinan.coding.graph import _generator_fix_router
@@ -27,12 +27,17 @@ from sinan.artifacts import ensure_run_dir, get_run_dir
 
 
 def _setup(tmp_path, monkeypatch, mock_response):
-    """Shared harness: tmp RUNS_DIR + harness with src/ + main.py."""
+    """Shared harness: tmp RUNS_DIR + harness with src/ + main.py.
+
+    generator_fix runs as an agent now, so the mock is registered on
+    MockAgentRunner. ``mock_response`` is the agent's structured report; its
+    ``files`` double as the file side-effects the mock agent "writes".
+    """
     from sinan import artifacts as art
     monkeypatch.setattr(art, "RUNS_DIR", tmp_path / "runs")
-    MonkeyPatch = MockLLMClient
-    MonkeyPatch.reset()
-    MonkeyPatch.register("Bug 修复", json.dumps(mock_response, ensure_ascii=False))
+    MockAgentRunner.reset()
+    MockAgentRunner.register("请在当前项目目录中修复", mock_response,
+                             files=mock_response.get("files", []))
 
     run_id = "fix_result_test"
     ensure_run_dir(run_id)

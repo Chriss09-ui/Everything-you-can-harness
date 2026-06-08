@@ -26,3 +26,7 @@ runs/
 # Secrets
 .env
 .env.*
+
+# Claude Code local overrides (machine-specific, not team-shared)
+.claude/settings.local.json
+.claude/agent-memory/
