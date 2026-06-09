@@ -22,7 +22,7 @@ case "$f" in
     msg="刚改了 src/sinan/state.py。按 CLAUDE.md 「改动同步原则」必须同步：docs/requirement_layer.md + docs/architecture_layer.md 的「State 字段」表（含字段名、类型、谁写、谁读）。"
     ;;
   */src/sinan/graph.py)
-    msg="刚改了 src/sinan/graph.py。按 CLAUDE.md 「改动同步原则」必须同步：src/sinan/nodes/NODES.md（路由函数规范块、原则 1 表）+ docs/sinan_流程图_v2.md（ASCII 流程图、Router 计数、死循环保险丝）+ 涉及层的指南文档。"
+    msg="刚改了 src/sinan/graph.py。按 CLAUDE.md 「改动同步原则」必须同步：src/sinan/nodes/NODES.md（路由函数规范块、原则 1 表）+ docs/sinan_流程图_v3.md（ASCII 流程图、Router 计数、死循环保险丝）+ 涉及层的指南文档。"
     ;;
   */src/sinan/validation.py)
     msg="刚改了 src/sinan/validation.py。按 CLAUDE.md 「改动同步原则」必须同步：src/sinan/nodes/NODES.md（涉及 artifact schema 的行）+ tests/test_validation.py（_REQUIRED_FIELDS 测试）。"
