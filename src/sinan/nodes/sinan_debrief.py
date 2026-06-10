@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 import json
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
+from ..node_roles import lookup as _node_role
 from ..prompts import get_prompt
 from ..artifacts import (
     append_progress_log, append_decision_log, finalize_phase,
@@ -49,7 +50,11 @@ def sinan_debrief_node(state: HarnessBuilderState) -> dict:
     }
     user = json.dumps(prompt_data, ensure_ascii=False, indent=2)
 
-    raw = client.generate(system, user)
+    raw = client.generate(
+        system, user,
+        run_id=state["run_id"],
+        agent_role=f'{_node_role("sinan_debrief")["role"]}|{_node_role("sinan_debrief")["layer"]}|sinan_debrief',
+    )
     response = parse_and_validate_artifact(raw, "sinan_debrief_display")
 
     # Type guard: schema only enforces that ``display`` is a top-level key, not

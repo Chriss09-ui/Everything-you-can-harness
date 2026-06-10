@@ -146,8 +146,9 @@ def test_content_none_does_not_retry():
 
 
 def test_openai_passes_max_tokens():
-    """max_tokens=4096 must actually reach the SDK call — otherwise long
-    outputs silently truncate to the model's lower default."""
+    """max_tokens (_MAX_TOKENS) must actually reach the SDK call — otherwise
+    long outputs silently truncate to the model's lower default."""
+    from sinan.llm import _MAX_TOKENS
     captured = {}
 
     class _Completions:
@@ -159,6 +160,6 @@ def test_openai_passes_max_tokens():
     c.model = "m"
     c.client = type("Inner", (), {"chat": type("C", (), {"completions": _Completions()})()})()
     c.generate("sys", "user")
-    assert captured.get("max_tokens") == 4096, (
-        f"expected max_tokens=4096 to be sent, got {captured.get('max_tokens')}"
+    assert captured.get("max_tokens") == _MAX_TOKENS, (
+        f"expected max_tokens={_MAX_TOKENS} to be sent, got {captured.get('max_tokens')}"
     )

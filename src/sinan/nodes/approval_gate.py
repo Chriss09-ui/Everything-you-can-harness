@@ -34,7 +34,7 @@ from ..llm import get_llm_client
 from ..prompts import get_prompt
 from ..artifacts import (
     update_run_state, append_progress_log, append_decision_log,
-    finalize_phase, load_state_or_file,
+    finalize_phase, load_state_or_file, join_display,
 )
 from ..validation import parse_llm_json
 
@@ -65,8 +65,8 @@ def approval_gate_node(state: HarnessBuilderState) -> dict:
         f"cost_complexity_concerns（复杂度问题）:\n"
         + "\n".join(f"  - {c}" for c in review.get("cost_complexity_concerns", []) or ["无"]) + "\n\n"
         f"【架构设计摘要】\n"
-        f"阶段序列: {', '.join(arch.get('phase_sequence', []))}\n"
-        f"审批闸门: {', '.join(arch.get('approval_gates', [])) or '无'}\n"
+        f"阶段序列: {join_display(arch.get('phase_sequence', []))}\n"
+        f"审批闸门: {join_display(arch.get('approval_gates', []), empty='无')}\n"
         f"失败恢复策略: {arch.get('failure_recovery', '未定义')}\n\n"
         f"【用户需求契约】\n"
         f"核心目标: {brief.get('primary_goal', '未定义')}\n\n"

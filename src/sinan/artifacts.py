@@ -22,6 +22,27 @@ import re as _re
 _RUN_ID_RE = _re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def join_display(items, sep: str = ", ", empty: str = "") -> str:
+    """Join a list that may hold plain strings OR dicts into a display string.
+
+    LLMs increasingly return structured items (list of dict) where older code
+    expected a list of str — a bare ``sep.join(items)`` then raises TypeError
+    ("expected str instance, dict found"). Dicts are reduced to a representative
+    key (name/title/phase/id) or compact JSON; non-dicts are str()-ed.
+    Empty/None -> ``empty``.
+    """
+    if not items:
+        return empty
+    out = []
+    for it in items:
+        if isinstance(it, dict):
+            label = it.get("name") or it.get("title") or it.get("phase") or it.get("id")
+            out.append(str(label) if label else json.dumps(it, ensure_ascii=False))
+        else:
+            out.append(str(it))
+    return sep.join(out)
+
+
 def _validate_run_id(run_id: str) -> None:
     if not isinstance(run_id, str) or not _RUN_ID_RE.match(run_id):
         raise ValueError(

@@ -34,7 +34,7 @@ from __future__ import annotations
 from ..state import HarnessBuilderState
 from ..artifacts import (
     append_progress_log, append_decision_log, load_state_or_file,
-    update_run_state,
+    update_run_state, join_display,
 )
 
 
@@ -153,7 +153,7 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
     req_lines.append(f"核心目标: {draft.get('primary_goal', '未定义')}")
     stakeholders = draft.get("stakeholders", []) or []
     if stakeholders:
-        req_lines.append(f"干系人: {', '.join(stakeholders)}")
+        req_lines.append(f"干系人: {join_display(stakeholders)}")
     scope = draft.get("scope", {}) or {}
     inclusions = scope.get("inclusions", []) or []
     exclusions = scope.get("exclusions", []) or []
@@ -206,7 +206,7 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
                 arch_lines.append(f"  {ce.get('condition', '?')}: {ce.get('routes', '')}")
     phases = draft.get("phase_sequence", []) or []
     if phases:
-        arch_lines.append(f"阶段序列: {' → '.join(phases)}")
+        arch_lines.append(f"阶段序列: {join_display(phases, sep=' → ')}")
     arch_lines.append(f"入口: {graph.get('entry_point', '未定义')}")
     arch_lines.append(f"终态: {graph.get('end_state', '未定义')}")
     sections.append(("二、架构设计", arch_lines))
@@ -241,7 +241,7 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
     # 四、治理
     gov_lines = []
     approval_gates = draft.get("approval_gates", []) or []
-    gov_lines.append(f"审批闸门: {', '.join(approval_gates) if approval_gates else '无'}")
+    gov_lines.append(f"审批闸门: {join_display(approval_gates, empty='无')}")
     gov_lines.append(f"失败恢复: {draft.get('failure_recovery', '未定义')}")
     sections.append(("四、治理与安全", gov_lines))
 
@@ -272,7 +272,7 @@ def _build_sections(draft: dict) -> list[tuple[str, list[str]]]:
                 tc_lines.append(f"      输入: {user_input[:80]}{'...' if len(str(user_input)) > 80 else ''}")
             keys = tc.get("expected_output_keys", []) or []
             if keys:
-                tc_lines.append(f"      期望输出键: {', '.join(keys)}")
+                tc_lines.append(f"      期望输出键: {join_display(keys)}")
             if not tc.get("expected_to_pass", True):
                 tc_lines.append("      预期: harness 应拒绝/报错")
         tc_lines.append("")

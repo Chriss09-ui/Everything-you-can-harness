@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
+from ..node_roles import lookup as _node_role
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -46,7 +47,11 @@ def brief_debate_node(state: HarnessBuilderState) -> dict:
         "请主持辩论并输出结果。"
     )
 
-    raw = client.generate(system, user)
+    raw = client.generate(
+        system, user,
+        run_id=state["run_id"],
+        agent_role=f'{_node_role("brief_debate")["role"]}|{_node_role("brief_debate")["layer"]}|brief_debate',
+    )
     debate_result = parse_and_validate_artifact(raw, "brief_debate")
 
     write_json(state["run_id"], "brief_debate.json", debate_result)

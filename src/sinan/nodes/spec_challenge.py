@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
+from ..node_roles import lookup as _node_role
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -42,7 +43,11 @@ def spec_challenge_node(state: HarnessBuilderState) -> dict:
     rp_json = json.dumps(rp, indent=2, ensure_ascii=False)
     user = f"以下是 Requirement Pack，请进行批判性审查:\n\n{rp_json}"
 
-    raw = client.generate(system, user)
+    raw = client.generate(
+        system, user,
+        run_id=state["run_id"],
+        agent_role=f'{_node_role("spec_challenge")["role"]}|{_node_role("spec_challenge")["layer"]}|spec_challenge',
+    )
     review = parse_and_validate_artifact(raw, "spec_review")
 
     write_json(state["run_id"], "spec_review.json", review)

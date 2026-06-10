@@ -33,12 +33,21 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 
 _log = logging.getLogger(__name__)
+
+# Try to import the trace helper; if the import ever fails we degrade
+# gracefully (LLM still works, just no trace row). The import is local so
+# a stray import cycle can't take down the LLM layer.
+try:
+    from .agent_trace import trace_llm_call
+except Exception:  # pragma: no cover - defensive only
+    def trace_llm_call(*_a, **_kw):  # type: ignore[no-redef]
+        return None
 
 
 # Total attempts (including the first call). Tunable for tests via monkeypatch.
@@ -46,6 +55,10 @@ _MAX_ATTEMPTS = 3
 # Base delay seconds for exponential backoff: sleep = _BACKOFF_BASE * 2**(attempt-1).
 # Default schedule: 0.5s, 1.0s between attempts 1→2, 2→3.
 _BACKOFF_BASE = 0.5
+# Output token budget. 16384 (not 4096) because thinking models spend part of
+# the budget on reasoning before the answer, and the largest architecture node
+# (zonggong_integrate) emits a ~16k-char payload that 4096/8192 truncated.
+_MAX_TOKENS = 16384
 # Exception class names that should NOT be retried (4xx that means "your
 # request is wrong", not transient). 429 RateLimitError IS retryable, so it
 # is intentionally absent.
@@ -98,9 +111,39 @@ class LLMClient(ABC):
     """Abstract LLM client."""
 
     @abstractmethod
-    def generate(self, system: str, user: str) -> str:
-        """Return LLM text response."""
+    def generate(
+        self,
+        system: str,
+        user: str,
+        *,
+        run_id: Optional[str] = None,
+        agent_role: Optional[str] = None,
+    ) -> str:
+        """Return LLM text response.
+
+        ``run_id`` and ``agent_role`` are tracing hints — they are passed
+        through to ``agent_trace.trace_llm_call`` for observability. Either
+        may be None (tracing skipped). Old callers that omit them keep
+        working unchanged.
+        """
         ...
+
+    def generate_structured(
+        self, system: str, user: str, schema: dict, tool_name: str = "emit",
+    ) -> dict:
+        """Return a structured dict constrained to ``schema``.
+
+        Default implementation degrades to the text path (``generate`` +
+        ``parse_llm_json``) so providers without native structured output
+        (Mock, OpenAI-compatible without tool use) keep working unchanged.
+        Subclasses with tool-use support (``_AnthropicClient``) override this
+        to force the model to fill a tool's ``input_schema`` — which removes
+        free-text JSON malformations (fences, trailing commas, ``...``,
+        backticks, leading prose) at the source.
+        """
+        from .validation import parse_llm_json
+        raw = self.generate(system, user)
+        return parse_llm_json(raw, tool_name)
 
 
 class MockLLMClient(LLMClient):
@@ -122,15 +165,38 @@ class MockLLMClient(LLMClient):
     def reset(cls) -> None:
         cls._class_responses.clear()
 
-    def generate(self, system: str, user: str) -> str:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        *,
+        run_id: Optional[str] = None,
+        agent_role: Optional[str] = None,
+    ) -> str:
+        import time as _t
+        start = _t.perf_counter()
         combined = system + user
         matched_response = None
         for trigger, response in self._responses.items():
             if trigger.lower() in combined.lower():
                 matched_response = response
-        if matched_response is not None:
-            return matched_response
-        return self._fallback_response(user)
+        if matched_response is None:
+            matched_response = self._fallback_response(user)
+        latency_ms = int((_t.perf_counter() - start) * 1000)
+        # Mock path: attempt 1 only, no retries.
+        trace_llm_call(
+            run_id=run_id,
+            agent_role=agent_role,
+            model="mock",
+            provider="mock",
+            attempt=1,
+            system_prompt=system,
+            user_prompt=user,
+            raw_response=matched_response,
+            status="success",
+            latency_ms=latency_ms,
+        )
+        return matched_response
 
     def _fallback_response(self, user: str) -> str:
         """Generate a plausible mock response when no trigger matches."""
@@ -206,13 +272,26 @@ class _OpenAIClient(LLMClient):
         if base_url:
             _log.info("OpenAI-compatible provider: base_url=%s model=%s", base_url, self.model)
 
-    def generate(self, system: str, user: str) -> str:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        *,
+        run_id: Optional[str] = None,
+        agent_role: Optional[str] = None,
+    ) -> str:
+        import time as _t
+        start = _t.perf_counter()
         # Retry with exponential backoff on transient errors (network, 429,
         # 5xx). 4xx request-shape errors and content-shape errors (None /
         # empty) are NOT retried — the next attempt would fail the same way
         # and we'd just burn quota. Symmetric to _AnthropicClient below
-        # (max_tokens=4096) so provider swaps don't silently re-introduce
-        # truncation-driven content=None failures.
+        # (max_tokens=16384) so provider swaps don't silently re-introduce
+        # truncation-driven content=None failures. 16384 (not 4096) because
+        # thinking models spend part of the budget on reasoning before the
+        # JSON answer, and the largest architecture node (zonggong_integrate)
+        # emits a ~16k-char architecture_pack — 4096 truncated framework_adjust
+        # and 8192 truncated zonggong_integrate mid-string.
         last_err: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
@@ -223,7 +302,7 @@ class _OpenAIClient(LLMClient):
                         {"role": "user", "content": user},
                     ],
                     temperature=0.3,
-                    max_tokens=4096,
+                    max_tokens=_MAX_TOKENS,
                 )
                 if not response.choices:
                     # We're inside the "choices is empty" branch, so there is
@@ -236,9 +315,27 @@ class _OpenAIClient(LLMClient):
                     raise _LLMContentNone(
                         f"finish_reason={response.choices[0].finish_reason}"
                     )
+                trace_llm_call(
+                    run_id=run_id, agent_role=agent_role,
+                    model=self.model, provider="openai", attempt=attempt,
+                    system_prompt=system, user_prompt=user,
+                    raw_response=content, status="success",
+                    latency_ms=int((_t.perf_counter() - start) * 1000),
+                    finish_reason=getattr(response.choices[0], "finish_reason", None),
+                )
                 return content
             except Exception as exc:
                 last_err = exc
+                # Don't double-trace _LLMContentNone/Empty (we'd already log them above/below).
+                if type(exc).__name__ not in _NON_RETRYABLE_CONTENT_ERRORS:
+                    trace_llm_call(
+                        run_id=run_id, agent_role=agent_role,
+                        model=self.model, provider="openai", attempt=attempt,
+                        system_prompt=system, user_prompt=user,
+                        raw_response=None, status="error",
+                        latency_ms=int((_t.perf_counter() - start) * 1000),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
                 _log.warning("OpenAI attempt %d failed: %s: %s",
                              attempt, type(exc).__name__, exc)
                 if not _should_retry(exc):
@@ -254,16 +351,26 @@ class _OpenAIClient(LLMClient):
 class _AnthropicClient(LLMClient):
     def __init__(self, api_key: str):
         import anthropic
-        self.client = anthropic.Anthropic(api_key=api_key)
+        base_url = os.getenv("ANTHROPIC_BASE_URL")
+        self.client = anthropic.Anthropic(api_key=api_key, base_url=base_url) if base_url else anthropic.Anthropic(api_key=api_key)
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-    def generate(self, system: str, user: str) -> str:
+    def generate(
+        self,
+        system: str,
+        user: str,
+        *,
+        run_id: Optional[str] = None,
+        agent_role: Optional[str] = None,
+    ) -> str:
+        import time as _t
+        start = _t.perf_counter()
         last_err: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             try:
                 response = self.client.messages.create(
                     model=self.model,
-                    max_tokens=4096,
+                    max_tokens=_MAX_TOKENS,
                     system=system,
                     messages=[{"role": "user", "content": user}],
                 )
@@ -271,18 +378,101 @@ class _AnthropicClient(LLMClient):
                     raise _LLMContentEmpty(
                         f"stop_reason={response.stop_reason if hasattr(response, 'stop_reason') else 'n/a'}"
                     )
-                text = response.content[0].text
-                if text is None:
+                # Extended-thinking models (e.g. deepseek-v4-flash via the
+                # anthropic endpoint) prepend a ThinkingBlock to content; only
+                # TextBlocks carry the answer. Concatenate every text block and
+                # skip thinking/other block types — content[0] is NOT safe to
+                # index blindly (a ThinkingBlock has no .text attribute).
+                text = "".join(
+                    b.text for b in response.content
+                    if getattr(b, "type", None) == "text"
+                    and getattr(b, "text", None) is not None
+                )
+                if not text:
                     raise _LLMContentNone(
                         f"stop_reason={getattr(response, 'stop_reason', None)}"
                     )
+                trace_llm_call(
+                    run_id=run_id, agent_role=agent_role,
+                    model=self.model, provider="anthropic", attempt=attempt,
+                    system_prompt=system, user_prompt=user,
+                    raw_response=text, status="success",
+                    latency_ms=int((_t.perf_counter() - start) * 1000),
+                    finish_reason=getattr(response, "stop_reason", None),
+                )
                 return text
             except Exception as exc:
                 last_err = exc
+                if type(exc).__name__ not in _NON_RETRYABLE_CONTENT_ERRORS:
+                    trace_llm_call(
+                        run_id=run_id, agent_role=agent_role,
+                        model=self.model, provider="anthropic", attempt=attempt,
+                        system_prompt=system, user_prompt=user,
+                        raw_response=None, status="error",
+                        latency_ms=int((_t.perf_counter() - start) * 1000),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
                 _log.warning("Anthropic attempt %d failed: %s: %s",
                              attempt, type(exc).__name__, exc)
                 if not _should_retry(exc):
                     _log.warning("Anthropic error %s is non-retryable; failing immediately",
+                                 type(exc).__name__)
+                    break
+                if attempt < _MAX_ATTEMPTS:
+                    time.sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
+        assert last_err is not None
+        raise last_err
+
+    def generate_structured(
+        self, system: str, user: str, schema: dict, tool_name: str = "emit",
+    ) -> dict:
+        """Force structured output via tool use.
+
+        The model must call a single tool whose ``input_schema`` is ``schema``;
+        the SDK returns the tool input as a dict, so there is no free-text JSON
+        to malform. Thinking blocks are skipped. Truncation (max_tokens) is NOT
+        solved here — an over-long tool input can still be cut off.
+        """
+        tool = {
+            "name": tool_name,
+            "description": "Emit the result as structured data matching the schema.",
+            "input_schema": schema,
+        }
+        last_err: Exception | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=_MAX_TOKENS,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                    tools=[tool],
+                    tool_choice={"type": "tool", "name": tool_name},
+                )
+                for block in response.content:
+                    if (getattr(block, "type", None) == "tool_use"
+                            and getattr(block, "name", None) == tool_name
+                            and isinstance(getattr(block, "input", None), dict)):
+                        return block.input
+                # The model occasionally ignores tool_choice and ends its turn
+                # with NO tool_use block (seen with mimo-v2.5-pro: stop_reason=
+                # end_turn). Unlike a text-path empty response, this IS transient
+                # — retry rather than fail the whole node. Set last_err and fall
+                # through to the retry sleep instead of raising a non-retryable
+                # _LLMContentEmpty.
+                last_err = _LLMContentEmpty(
+                    f"no tool_use block (stop_reason={getattr(response, 'stop_reason', None)})"
+                )
+                _log.warning("Anthropic structured attempt %d: no tool_use block; will retry", attempt)
+                if attempt < _MAX_ATTEMPTS:
+                    time.sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
+                continue
+            except Exception as exc:
+                last_err = exc
+                _log.warning("Anthropic structured attempt %d failed: %s: %s",
+                             attempt, type(exc).__name__, exc)
+                if not _should_retry(exc):
+                    _log.warning("Anthropic structured error %s is non-retryable",
                                  type(exc).__name__)
                     break
                 if attempt < _MAX_ATTEMPTS:

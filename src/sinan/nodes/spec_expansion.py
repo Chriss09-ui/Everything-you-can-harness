@@ -20,6 +20,7 @@ Routes:
 from __future__ import annotations
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
+from ..node_roles import lookup as _node_role
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -44,7 +45,11 @@ def spec_expansion_node(state: HarnessBuilderState) -> dict:
     system = get_prompt("tuopu")
     user = f"用户原始输入如下。请生成结构化 Requirement Pack:\n\n{raw_input}"
 
-    raw = client.generate(system, user)
+    raw = client.generate(
+        system, user,
+        run_id=state["run_id"],
+        agent_role=f'{_node_role("spec_expansion")["role"]}|{_node_role("spec_expansion")["layer"]}|spec_expansion',
+    )
     rp = parse_and_validate_artifact(raw, "requirement_pack")
 
     write_json(state["run_id"], "requirement_pack.json", rp)

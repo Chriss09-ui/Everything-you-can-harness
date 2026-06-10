@@ -240,3 +240,47 @@ def test_parse_llm_json_untagged_fence_still_works_after_fix():
     )
     data = parse_llm_json(raw, "framework_design")
     assert data["primary_goal"] == "g"
+
+
+def test_parse_llm_json_tolerates_trailing_comma():
+    """Smaller/faster LLMs emit trailing commas before } or ]; strict json
+    rejects them. parse_llm_json must repair and parse rather than crash the
+    whole pipeline on one malformed sub-agent reply (observed live with
+    deepseek-v4-flash producing a trailing comma in an eval review)."""
+    raw = '{"a": 1, "b": [1, 2,], "c": {"d": 3,},}'
+    data = parse_llm_json(raw, "framework_design")
+    assert data == {"a": 1, "b": [1, 2], "c": {"d": 3}}
+
+
+def test_parse_llm_json_trailing_comma_repair_preserves_string_commas():
+    """The trailing-comma repair is string-aware: a literal ", ]" / ", }"
+    INSIDE a string value must survive untouched."""
+    raw = '{"note": "items, ] and more, }", "list": [1,],}'
+    data = parse_llm_json(raw, "framework_design")
+    assert data["note"] == "items, ] and more, }"
+    assert data["list"] == [1]
+
+
+def test_minimal_schema_from_required_fields():
+    """minimal_schema builds a tool-use input_schema from _REQUIRED_FIELDS:
+    object + top-level required + open nested shapes."""
+    from sinan.validation import minimal_schema
+    s = minimal_schema("subagent_review_item")
+    assert s["type"] == "object"
+    assert s["additionalProperties"] is True
+    assert set(s["required"]) == {
+        "agent_name", "incompatibilities", "missing_elements",
+        "endorsed_elements", "summary",
+    }
+    assert set(s["properties"]) == set(s["required"])
+
+
+def test_minimal_schema_open_for_unregistered():
+    """An artifact with no required-fields entry (e.g. a sub-agent design step)
+    yields an open object schema — still forces the structured tool path, but
+    constrains no content."""
+    from sinan.validation import minimal_schema
+    s = minimal_schema("zonggong_memory")
+    assert s["type"] == "object"
+    assert s["required"] == []
+    assert s["additionalProperties"] is True

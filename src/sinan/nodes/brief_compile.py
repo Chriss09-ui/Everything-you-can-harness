@@ -24,6 +24,7 @@ import json
 from datetime import datetime, timezone
 from ..state import HarnessBuilderState
 from ..llm import get_llm_client
+from ..node_roles import lookup as _node_role
 from ..prompts import get_prompt
 from ..artifacts import (
     write_json, update_run_state, append_progress_log,
@@ -85,7 +86,11 @@ def brief_compile_node(state: HarnessBuilderState) -> dict:
         f"请合并以上所有信息，生成最终 User Brief Form。"
     )
 
-    raw = client.generate(system, user)
+    raw = client.generate(
+        system, user,
+        run_id=state["run_id"],
+        agent_role=f'{_node_role("brief_compile")["role"]}|{_node_role("brief_compile")["layer"]}|brief_compile',
+    )
     brief = parse_and_validate_artifact(raw, "user_brief_form")
     brief = _enrich_user_brief_form(brief, rp)
     # System-authoritative metadata: overwrite any LLM-provided values.

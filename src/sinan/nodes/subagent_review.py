@@ -30,9 +30,7 @@ from ..artifacts import (
     write_json, update_run_state, append_progress_log,
     append_decision_log, finalize_phase, load_state_or_file,
 )
-from ..validation import (
-    parse_llm_json, parse_and_validate_artifact, validate_artifact,
-)
+from ..validation import validate_artifact, minimal_schema
 
 
 # Three independent sub-agents with no shared mutable state — natural
@@ -167,10 +165,14 @@ def _call_subagent(client, brief_text: str, framework_text: str, name: str, role
         f"Framework Design:\n{framework_text}\n\n"
         f"请基于以上信息，设计你的模块。"
     )
-    raw_design = client.generate(system, design_user)
-    # detailed design shapes differ per sub-agent (memory/handoff/eval),
-    # so we only parse; schema is enforced on the wrapped subagent_outputs.
-    design = parse_llm_json(raw_design, f"zonggong_{name}")
+    # Tool-use structured output: the model fills a tool's input_schema, so the
+    # SDK hands back a dict directly — no free-text JSON to malform. Detailed
+    # design shapes differ per sub-agent, so the schema is left open (no required
+    # fields); content is enforced on the wrapped subagent_outputs.
+    design = client.generate_structured(
+        system, design_user, minimal_schema(f"zonggong_{name}"),
+        tool_name="emit_design",
+    )
 
     # Step 2: 子代理评审 framework
     review_prompt = get_prompt("subagent_review")
@@ -181,7 +183,10 @@ def _call_subagent(client, brief_text: str, framework_text: str, name: str, role
         f"Your Module Design (for reference):\n{json.dumps(design, indent=2, ensure_ascii=False)}\n\n"
         f"请以 {name} 专家的视角，评审上述 framework 设计。"
     )
-    raw_review = client.generate(review_system, review_user)
-    review = parse_and_validate_artifact(raw_review, "subagent_review_item")
+    review = client.generate_structured(
+        review_system, review_user, minimal_schema("subagent_review_item"),
+        tool_name="emit_review",
+    )
+    validate_artifact(review, "subagent_review_item")
 
     return {"design": design, "review": review}

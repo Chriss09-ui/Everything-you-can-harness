@@ -170,6 +170,43 @@ _REQUIRED_FIELDS = {
 }
 
 
+def _strip_trailing_commas(s: str) -> str:
+    """Remove trailing commas (",}" / ",]") that sit OUTSIDE string literals.
+
+    Smaller/faster LLMs emit them often; strict ``json.loads`` rejects them.
+    This is string-aware: it tracks whether the scanner is inside a JSON string
+    (honouring backslash escapes), so a literal ``", }"`` inside a value is left
+    untouched. Only a comma followed — after optional whitespace — by ``}`` or
+    ``]`` while outside a string is dropped.
+    """
+    out: list[str] = []
+    in_str = False
+    esc = False
+    n = len(s)
+    for i, ch in enumerate(s):
+        if in_str:
+            out.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            continue
+        if ch == ",":
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            if j < n and s[j] in "}]":
+                continue  # drop the trailing comma
+        out.append(ch)
+    return "".join(out)
+
+
 def parse_llm_json(raw: str, artifact_name: str) -> dict:
     """Strip markdown fences and parse a JSON-only LLM response.
 
@@ -196,7 +233,19 @@ def parse_llm_json(raw: str, artifact_name: str) -> dict:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse {artifact_name}: {exc}") from exc
+        # LLMs (especially smaller/faster models) frequently emit trailing
+        # commas before } or ]. Retry once with a string-aware repair before
+        # giving up — the repair only removes commas OUTSIDE string literals,
+        # so a literal ", }" inside a value is never corrupted. If the repaired
+        # text still doesn't parse, surface the ORIGINAL error (more honest
+        # about what the LLM actually produced).
+        repaired = _strip_trailing_commas(text)
+        if repaired == text:
+            raise ValueError(f"Failed to parse {artifact_name}: {exc}") from exc
+        try:
+            data = json.loads(repaired)
+        except json.JSONDecodeError:
+            raise ValueError(f"Failed to parse {artifact_name}: {exc}") from exc
 
     if not isinstance(data, dict):
         raise ValueError(f"{artifact_name} must be a JSON object")
@@ -255,3 +304,49 @@ def parse_and_validate_artifact(raw: str, artifact_name: str) -> dict:
     """Parse an LLM response and fail fast on schema violations."""
     data = parse_llm_json(raw, artifact_name)
     return validate_artifact(data, artifact_name)
+
+
+# Tool-use input schemas with EXPLICIT field types. minimal_schema (derived
+# from _REQUIRED_FIELDS) only guarantees top-level key presence — and under
+# tool use that lets the model "legally" fill an array-shaped field with a JSON
+# *string* (observed: incompatibilities came back as a 955-char string of
+# serialized JSON). For artifacts whose field types matter (displayed/consumed
+# downstream), pin the types here so the model is forced to emit real arrays.
+_TOOL_SCHEMAS = {
+    "subagent_review_item": {
+        "type": "object",
+        "properties": {
+            "agent_name": {"type": "string"},
+            "incompatibilities": {"type": "array"},
+            "missing_elements": {"type": "array"},
+            "endorsed_elements": {"type": "array"},
+            "summary": {"type": "string"},
+        },
+        "required": ["agent_name", "incompatibilities", "missing_elements",
+                     "endorsed_elements", "summary"],
+        "additionalProperties": True,
+    },
+}
+
+
+def minimal_schema(artifact_name: str) -> dict:
+    """Return a JSON Schema for use as a tool-use ``input_schema``.
+
+    Prefers an explicit typed schema from ``_TOOL_SCHEMAS`` (field types pinned
+    so the model can't fill an array field with a string). Falls back to a
+    minimal schema derived from ``_REQUIRED_FIELDS`` — object + top-level
+    required keys, nested shapes left open (same philosophy as
+    ``validate_artifact``). Artifacts with neither (e.g. the per-sub-agent
+    design steps) yield an open object schema: still forces the structured tool
+    path (killing text malformations) without constraining content.
+    """
+    explicit = _TOOL_SCHEMAS.get(artifact_name)
+    if explicit is not None:
+        return explicit
+    required = sorted(_REQUIRED_FIELDS.get(artifact_name) or [])
+    return {
+        "type": "object",
+        "properties": {k: {} for k in required},
+        "required": required,
+        "additionalProperties": True,
+    }
