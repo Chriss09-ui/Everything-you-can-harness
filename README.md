@@ -52,7 +52,7 @@ Resume flags read from disk and jump into the corresponding layer:
   skips both design layers, re-runs coding only. Use to retry the slow coding
   layer without re-running the (interactive) design layers.
 
-Repo 用 `src/` 布局，没有 `pyproject.toml`，所以运行模块前需要 `PYTHONPATH=src`。
+Repo 使用 `src/` 布局。`pyproject.toml` 目前仅配置 pytest 的测试目录与 `pythonpath`；直接运行 CLI 时仍需设置 `PYTHONPATH=src`。
 
 ## LLM Mode
 
